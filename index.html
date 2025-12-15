@@ -2,56 +2,32 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>Controle Financeiro</title>
+  <title>Financeiro Pessoal</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#2f855a" />
+
+  <meta name="theme-color" content="#4b7bec" />
   <link rel="manifest" href="manifest.json" />
+
+  <!-- XLSX (Excel offline) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
 
   <style>
     body {
-      margin: 0;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f5f5f5;
+      margin: 0;
+      background: #f5f5fa;
       color: #222;
     }
-
     header {
-      padding: 1rem;
-      background: #2f855a;
+      background: #4b7bec;
       color: #fff;
+      padding: 1rem;
       text-align: center;
-      font-weight: 600;
     }
-
     main {
       padding: 1rem;
-      padding-bottom: 5rem;
+      padding-bottom: 4rem;
     }
-
-    label {
-      display: block;
-      margin-top: 0.8rem;
-      font-size: 0.85rem;
-    }
-
-    input, select {
-      width: 100%;
-      padding: 0.6rem;
-      margin-top: 0.2rem;
-      font-size: 1rem;
-    }
-
-    button {
-      margin-top: 1rem;
-      padding: 0.7rem;
-      width: 100%;
-      font-size: 1rem;
-      border: none;
-      border-radius: 6px;
-      background: #2f855a;
-      color: #fff;
-    }
-
     nav {
       position: fixed;
       bottom: 0;
@@ -59,86 +35,58 @@
       right: 0;
       display: flex;
       background: #fff;
-      border-top: 1px solid #ccc;
+      border-top: 1px solid #ddd;
     }
-
     nav button {
       flex: 1;
-      border-radius: 0;
+      padding: 0.8rem;
+      border: none;
       background: none;
-      color: #333;
-      font-size: 0.8rem;
+      font-size: 0.9rem;
     }
-    
-    .view {
-  display: block;
-}
+    .view { display: none; }
+    .view.active { display: block; }
 
-.hidden {
-  display: none;
-}
+    .card {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 0.8rem;
+      margin: 0.6rem 0;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      margin: 0.3rem 0;
+    }
+    .big { font-weight: 700; }
 
-.bar {
-  margin: 0.4rem 0;
-}
+    button {
+      background: #4b7bec;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.5rem;
+      cursor: pointer;
+    }
 
-.bar-label {
-  font-size: 0.75rem;
-}
-
-.bar-track {
-  background: #e0e0e0;
-  height: 10px;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.bar-fill {
-  height: 100%;
-  background: #2f855a;
-}
-
-.card {
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  padding: 0.8rem;
-  margin: 0.6rem 0;
-}
-
-.row {
-  display:flex;
-  justify-content:space-between;
-  gap: 0.8rem;
-  font-size: 0.95rem;
-  margin: 0.25rem 0;
-}
-
-.big {
-  font-weight: 700;
-  font-size: 1.05rem;
-  margin-top: 0.5rem;
-}
-
-.sep {
-  border-top: 1px solid #eee;
-  margin: 0.6rem 0;
-}
+    input, select {
+      width: 100%;
+      padding: 0.4rem;
+      margin: 0.3rem 0 0.6rem 0;
+    }
   </style>
 </head>
 
 <body>
-
 <header>
-  + Lançamento
+  <h2>Financeiro</h2>
 </header>
 
 <main>
-
-  <!-- VIEW: LANÇAMENTO -->
-  <section id="view-launch" class="view">
-    <label>Valor</label>
-    <input id="valor" type="number" placeholder="0,00" />
+  <!-- LANÇAR -->
+  <section id="view-lancar" class="view active">
+    <h3>Novo lançamento</h3>
 
     <label>Conta</label>
     <select id="conta">
@@ -160,139 +108,74 @@
     <label>Subcategoria</label>
     <select id="subcategoria"></select>
 
-    <label>Data</label>
-    <input id="data" type="date" />
+    <label>Valor</label>
+    <input id="valor" type="number" step="0.01" />
 
     <label>Competência</label>
     <input id="competencia" type="month" />
 
     <label>Descrição</label>
-    <input id="descricao" type="text" />
+    <input id="descricao" />
 
     <button onclick="salvarLancamento()">Salvar</button>
   </section>
 
-  <!-- VIEW: MÊS -->
-  <section id="view-mes" class="view hidden">
-  <h3>Dashboard do mês</h3>
-
-  <label>Mês (competência)</label>
-  <input id="dash-month" type="month" />
-
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem">
-
-    <!-- BRADESCO -->
-    <div>
-      <h4>Bradesco</h4>
-
-      <div id="brad-renda"></div>
-      <div id="brad-gastos"></div>
-      <div id="brad-resultado"></div>
-
-      <h5>Gastos (barras)</h5>
-      <div id="brad-barras"></div>
-    </div>
-
-    <!-- BB -->
-    <div>
-      <h4>Banco do Brasil</h4>
-
-      <div id="bb-entradas"></div>
-      <div id="bb-saidas"></div>
-      <div id="bb-resultado"></div>
-
-      <h5>Saídas (barras)</h5>
-      <div id="bb-barras-gastos"></div>
-      <div id="bb-barras-invest"></div>
-    </div>
-
-  </div>
-</section>
-
-    <!-- BRADESCO -->
-    <div>
-      <h4>Bradesco</h4>
-
-      <div id="brad-totais"></div>
-
-      <h5>Gastos por categoria</h5>
-      <div id="brad-barras"></div>
-    </div>
-
-    <!-- BB -->
-    <div>
-      <h4>Banco do Brasil</h4>
-
-      <div id="bb-totais"></div>
-
-      <h5>Movimento por categoria</h5>
-      <div id="bb-barras"></div>
-    </div>
-
-  </div>
-</section>
-
-  <!-- VIEW: CARTÃO -->
-  <section id="view-cartao" class="view hidden">
-  <h3>Cartão (mês da cobrança)</h3>
-
-  <label>Mês (competência)</label>
-  <input id="card-month" type="month" />
-
-  <div id="card-totais" class="card"></div>
-
-  <div class="card">
-    <h4>Assinaturas</h4>
-    <button id="btn-add-sub">+ Cadastrar assinatura</button>
-    <button id="btn-sync-subs" style="margin-top:0.5rem;background:#444">Gerar cobranças do mês</button>
-    <div id="card-subs-list" style="margin-top:0.8rem"></div>
-  </div>
-<div class="card">
-  <h4>Cadastro de assinaturas</h4>
-  <div id="subs-master-list"></div>
-</div>
-  <div class="card">
-    <h4>Gastos gerais</h4>
-    <button id="btn-add-card-buy">+ Adicionar compra</button>
-    <div id="card-buys-list" style="margin-top:0.8rem"></div>
-  </div>
-
-  <h5>Gráfico (barras)</h5>
-  <div id="card-barras"></div>
-</section>
-
-  <!-- VIEW: INVESTIMENTOS -->
-  <section id="view-investimentos" class="view hidden">
-    <h3>Investimentos</h3>
-    <p>Ordens, dividendos e resumo</p>
+  <!-- MÊS -->
+  <section id="view-mes" class="view">
+    <h3>Mês</h3>
+    <input id="dash-month" type="month" />
+    <div id="dashboard"></div>
   </section>
 
-  <!-- VIEW: MAIS -->
-  <section id="view-mais" class="view hidden">
+  <!-- CARTÃO -->
+  <section id="view-cartao" class="view">
+    <h3>Cartão</h3>
+    <input id="card-month" type="month" />
+
+    <div class="card">
+      <button id="btn-add-sub">+ Assinatura</button>
+      <button id="btn-sync-subs">Gerar mês</button>
+    </div>
+
+    <div class="card">
+      <h4>Cadastro de assinaturas</h4>
+      <div id="subs-master-list"></div>
+    </div>
+
+    <div class="card">
+      <h4>Fatura do mês</h4>
+      <div id="card-list"></div>
+    </div>
+  </section>
+
+  <!-- INVEST -->
+  <section id="view-invest" class="view">
+    <h3>Investimentos (BB)</h3>
+    <div id="invest-view"></div>
+  </section>
+
+  <!-- MAIS -->
+  <section id="view-mais" class="view">
     <h3>Mais</h3>
-    <ul>
-      <li>Fechar mês</li>
-      <li>Exportar Excel</li>
-      <li>Categorias</li>
-      <li>Assinaturas</li>
-      
-      <button onclick="exportExcel()">📤 Exportar Excel (mês)</button>
-    </ul>
+    <button onclick="exportExcel()">Exportar Excel</button>
   </section>
-
 </main>
 
 <nav>
-  <button onclick="showView('launch')">＋ Lançar</button>
+  <button onclick="showView('lancar')">+ Lançar</button>
   <button onclick="showView('mes')">Mês</button>
   <button onclick="showView('cartao')">Cartão</button>
-  <button onclick="showView('investimentos')">Invest</button>
+  <button onclick="showView('invest')">Invest</button>
   <button onclick="showView('mais')">Mais</button>
 </nav>
 
 <script src="storage.js"></script>
 <script src="app.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
 
+<script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js");
+  }
+</script>
 </body>
 </html>
