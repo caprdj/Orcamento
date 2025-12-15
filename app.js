@@ -239,6 +239,13 @@ function renderMes(){
   const listEl = document.getElementById("listagem");
   if(!dashEl || !listEl) return;
 
+dashEl.classList.add("bank-bg");
+dashEl.classList.toggle("brad", currentBank === "Bradesco");
+dashEl.classList.toggle("bb", currentBank === "Banco do Brasil");
+
+listEl.classList.add("bank-bg");
+listEl.classList.toggle("brad", currentBank === "Bradesco");
+listEl.classList.toggle("bb", currentBank === "Banco do Brasil");
   if(currentBank==="Bradesco"){
     // Renda
     const renda = L.filter(l=>l.conta==="Bradesco" && l.tipo==="Receita" && l.categoria==="Renda");

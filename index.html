@@ -23,6 +23,8 @@
       --danger:#eb3b5a;
       --pill:#eef2ff;
       --radius:14px;
+      --brad-bg: #fff1f1;   /* vermelho bem claro */
+--bb-bg:   #fff8e1;   /* amarelo bem claro */
     }
     *{box-sizing:border-box}
     body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
@@ -51,6 +53,10 @@
     .card{
       background:var(--card);
       border:1px solid var(--border);
+     
+     .bank-bg { border: 1px solid var(--border); }
+.bank-bg.brad { background: var(--brad-bg); }
+.bank-bg.bb   { background: var(--bb-bg); }
       border-radius:var(--radius);
       padding:12px;
       margin:10px 0;
