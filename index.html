@@ -2,180 +2,266 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>Financeiro Pessoal</title>
+  <title>Financeiro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
   <meta name="theme-color" content="#4b7bec" />
   <link rel="manifest" href="manifest.json" />
 
-  <!-- XLSX (Excel offline) -->
+  <!-- XLSX (Excel) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
 
   <style>
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      margin: 0;
-      background: #f5f5fa;
-      color: #222;
+    :root{
+      --bg:#f5f5fa;
+      --card:#ffffff;
+      --primary:#4b7bec;
+      --secondary:#20bf6b;
+      --accent:#f7b731;
+      --text:#222;
+      --muted:#666;
+      --border:#ddd;
+      --danger:#eb3b5a;
+      --pill:#eef2ff;
+      --radius:14px;
     }
-    header {
-      background: #4b7bec;
-      color: #fff;
-      padding: 1rem;
-      text-align: center;
-    }
-    main {
-      padding: 1rem;
-      padding-bottom: 4rem;
-    }
-    nav {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      display: flex;
-      background: #fff;
-      border-top: 1px solid #ddd;
-    }
-    nav button {
-      flex: 1;
-      padding: 0.8rem;
-      border: none;
-      background: none;
-      font-size: 0.9rem;
-    }
-    .view { display: none; }
-    .view.active { display: block; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
+    main{padding:14px;padding-bottom:90px}
 
-    .card {
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      padding: 0.8rem;
-      margin: 0.6rem 0;
+    /* Topo (tarja arredondada) */
+    .topbar{
+      margin:14px 14px 0 14px;
+      background:var(--primary);
+      color:#fff;
+      border-radius:18px;
+      padding:14px 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      box-shadow:0 6px 18px rgba(0,0,0,.08);
     }
-    .row {
-      display: flex;
-      justify-content: space-between;
-      margin: 0.3rem 0;
-    }
-    .big { font-weight: 700; }
-
-    button {
-      background: #4b7bec;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      padding: 0.5rem;
-      cursor: pointer;
+    .topbar h1{font-size:18px;margin:0}
+    .chip{
+      background:rgba(255,255,255,.18);
+      padding:6px 10px;
+      border-radius:999px;
+      font-size:12px;
     }
 
-    input, select {
-      width: 100%;
-      padding: 0.4rem;
-      margin: 0.3rem 0 0.6rem 0;
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      padding:12px;
+      margin:10px 0;
+      box-shadow:0 2px 8px rgba(0,0,0,.03);
+    }
+    label{font-size:13px;color:var(--muted)}
+    input,select{
+      width:100%;
+      padding:10px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      margin:6px 0 10px 0;
+      background:#fff;
+      font-size:15px;
+    }
+
+    .btn{
+      border:none;
+      border-radius:12px;
+      padding:10px 12px;
+      background:var(--primary);
+      color:#fff;
+      font-weight:600;
+    }
+    .btn.secondary{background:var(--secondary)}
+    .btn.ghost{background:#444}
+    .btn.danger{background:var(--danger)}
+    .btn.small{padding:8px 10px;border-radius:10px;font-size:13px}
+    .row{display:flex;justify-content:space-between;gap:10px;align-items:center;margin:6px 0}
+    .big{font-weight:800;font-size:16px}
+    .muted{color:var(--muted)}
+
+    /* Pills de banco */
+    .pillbar{display:flex;gap:8px;background:var(--pill);padding:8px;border-radius:999px}
+    .pill{
+      flex:1;
+      border:none;
+      border-radius:999px;
+      padding:10px 12px;
+      font-weight:700;
+      background:transparent;
+      color:var(--primary);
+    }
+    .pill.active{background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+    .hint{font-size:12px;color:var(--muted);margin-top:4px}
+
+    /* Abas (footer) */
+    nav{
+      position:fixed;left:0;right:0;bottom:0;
+      background:#fff;border-top:1px solid var(--border);
+      display:flex;gap:4px;padding:8px;
+    }
+    nav button{
+      flex:1;border:none;border-radius:14px;padding:10px 6px;
+      background:#fff;color:var(--muted);font-weight:700;
+    }
+    nav button.active{
+      background:var(--pill);
+      color:var(--primary);
+    }
+
+    .view{display:none}
+    .view.active{display:block}
+
+    /* lista lançamentos */
+    .item{
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:10px;
+      margin:8px 0;
+      background:#fff;
+    }
+    .tag{
+      font-size:12px;
+      background:var(--pill);
+      padding:4px 8px;border-radius:999px;
+      color:var(--primary);
+      font-weight:700;
     }
   </style>
 </head>
 
 <body>
-<header>
-  <h2>Financeiro</h2>
-</header>
+  <div class="topbar">
+    <h1>Financeiro</h1>
+    <div class="chip" id="chip-month">—</div>
+  </div>
 
-<main>
-  <!-- LANÇAR -->
-  <section id="view-lancar" class="view active">
-    <h3>Novo lançamento</h3>
+  <main>
+    <!-- LANÇAR -->
+    <section id="view-lancar" class="view active">
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Novo lançamento</h3>
 
-    <label>Conta</label>
-    <select id="conta">
-      <option>Bradesco</option>
-      <option>Banco do Brasil</option>
-      <option>Cartão</option>
-    </select>
+        <label>Conta</label>
+        <select id="conta">
+          <option>Bradesco</option>
+          <option>Banco do Brasil</option>
+          <option>Cartão</option>
+        </select>
 
-    <label>Tipo</label>
-    <select id="tipo">
-      <option>Despesa</option>
-      <option>Receita</option>
-      <option>Transferência</option>
-    </select>
+        <label>Tipo</label>
+        <select id="tipo">
+          <option>Despesa</option>
+          <option>Receita</option>
+          <option>Transferência</option>
+        </select>
 
-    <label>Categoria</label>
-    <select id="categoria"></select>
+        <label>Categoria</label>
+        <select id="categoria"></select>
 
-    <label>Subcategoria</label>
-    <select id="subcategoria"></select>
+        <label>Subcategoria</label>
+        <select id="subcategoria"></select>
 
-    <label>Valor</label>
-    <input id="valor" type="number" step="0.01" />
+        <label>Valor</label>
+        <input id="valor" type="number" step="0.01" />
 
-    <label>Competência</label>
-    <input id="competencia" type="month" />
+        <label>Competência</label>
+        <input id="competencia" type="month" />
 
-    <label>Descrição</label>
-    <input id="descricao" />
+        <label>Descrição</label>
+        <input id="descricao" placeholder="Ex.: mercado, uber, aporte..." />
 
-    <button onclick="salvarLancamento()">Salvar</button>
-  </section>
+        <button class="btn secondary" onclick="salvarLancamento()">Salvar</button>
+        <div class="hint">Dica: você edita/exclui depois na tela “Mês”.</div>
+      </div>
+    </section>
 
-  <!-- MÊS -->
-  <section id="view-mes" class="view">
-    <h3>Mês</h3>
-    <input id="dash-month" type="month" />
-    <div id="dashboard"></div>
-  </section>
+    <!-- MÊS -->
+    <section id="view-mes" class="view">
+      <div class="card">
+        <div class="row">
+          <div style="flex:1">
+            <label>Mês (competência)</label>
+            <input id="dash-month" type="month" />
+          </div>
+        </div>
 
-  <!-- CARTÃO -->
-  <section id="view-cartao" class="view">
-    <h3>Cartão</h3>
-    <input id="card-month" type="month" />
+        <div class="pillbar" style="margin-top:6px">
+          <button id="pill-brad" class="pill active">Bradesco</button>
+          <button id="pill-bb" class="pill">BB</button>
+        </div>
+        <div class="hint">Alternar banco muda o resumo e a lista.</div>
+      </div>
 
-    <div class="card">
-      <button id="btn-add-sub">+ Assinatura</button>
-      <button id="btn-sync-subs">Gerar mês</button>
-    </div>
+      <div id="dashboard" class="card"></div>
+      <div id="listagem" class="card"></div>
+    </section>
 
-    <div class="card">
-      <h4>Cadastro de assinaturas</h4>
-      <div id="subs-master-list"></div>
-    </div>
+    <!-- CARTÃO -->
+    <section id="view-cartao" class="view">
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Cartão</h3>
 
-    <div class="card">
-      <h4>Fatura do mês</h4>
-      <div id="card-list"></div>
-    </div>
-  </section>
+        <label>Mês (competência)</label>
+        <input id="card-month" type="month" />
 
-  <!-- INVEST -->
-  <section id="view-invest" class="view">
-    <h3>Investimentos (BB)</h3>
-    <div id="invest-view"></div>
-  </section>
+        <div class="row">
+          <button class="btn small" id="btn-add-sub">+ Assinatura</button>
+          <button class="btn small ghost" id="btn-sync-subs">Gerar mês</button>
+        </div>
+      </div>
 
-  <!-- MAIS -->
-  <section id="view-mais" class="view">
-    <h3>Mais</h3>
-    <button onclick="exportExcel()">Exportar Excel</button>
-  </section>
-</main>
+      <div class="card">
+        <h4 style="margin:0 0 8px 0">Cadastro de assinaturas</h4>
+        <div id="subs-master-list"></div>
+      </div>
 
-<nav>
-  <button onclick="showView('lancar')">+ Lançar</button>
-  <button onclick="showView('mes')">Mês</button>
-  <button onclick="showView('cartao')">Cartão</button>
-  <button onclick="showView('invest')">Invest</button>
-  <button onclick="showView('mais')">Mais</button>
-</nav>
+      <div class="card">
+        <h4 style="margin:0 0 8px 0">Fatura do mês</h4>
+        <div id="card-list"></div>
+      </div>
+    </section>
 
-<script src="storage.js"></script>
-<script src="app.js"></script>
+    <!-- INVEST -->
+    <section id="view-invest" class="view">
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Investimentos (BB)</h3>
+        <div id="invest-view"></div>
+      </div>
+    </section>
 
-<script>
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js");
-  }
-</script>
+    <!-- MAIS -->
+    <section id="view-mais" class="view">
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Mais</h3>
+        <button class="btn" onclick="exportExcel()">📤 Exportar Excel (mês)</button>
+        <div class="hint">Se não baixar, provavelmente é cache antigo do GitHub Pages.</div>
+      </div>
+
+      <div class="card">
+        <h4 style="margin:0 0 8px 0">Categorias & Subcategorias</h4>
+        <button class="btn small" onclick="openCatsManager()">Gerenciar</button>
+        <div id="cats-preview" class="hint"></div>
+      </div>
+    </section>
+  </main>
+
+  <nav>
+    <button id="tab-lancar" class="active" onclick="showView('lancar')">+ Lançar</button>
+    <button id="tab-mes" onclick="showView('mes')">Mês</button>
+    <button id="tab-cartao" onclick="showView('cartao')">Cartão</button>
+    <button id="tab-invest" onclick="showView('invest')">Invest</button>
+    <button id="tab-mais" onclick="showView('mais')">Mais</button>
+  </nav>
+
+  <script src="storage.js"></script>
+  <script src="app.js"></script>
+
+  <script>
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+  </script>
 </body>
 </html>
