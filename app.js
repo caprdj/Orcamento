@@ -143,14 +143,14 @@ function openCatsManager(){
 ========================= */
 
 function setActiveTab(view){
-  ["lancar","mes","cartao","invest","mais"].forEach(v=>{
+  ["lancar","mes","cartao","invest","graficos","mais"].forEach(v=>{
     const b=document.getElementById(`tab-${v}`);
     if(b) b.classList.toggle("active", v===view);
   });
 }
 
 function showView(view){
-  ["lancar","mes","cartao","invest","mais"].forEach(v=>{
+  ["lancar","mes","cartao","invest","graficos","mais"].forEach(v=>{
     const el=document.getElementById(`view-${v}`);
     if(el) el.classList.toggle("active", v===view);
   });
@@ -159,7 +159,9 @@ function showView(view){
   if(view==="mes"){ initMesUI(); renderMes(); }
   if(view==="cartao"){ initCartaoUI(); renderCartao(); renderSubscriptionsMaster(); }
   if(view==="invest"){ renderInvestimentos(); }
-  if(view==="mais"){ renderCatsPreview(); }
+  if(view==="mais")
+  if(view==="graficos"){ initGraficosUI(); renderGrafico(); }
+  { renderCatsPreview(); }
 }
 
 /* =========================
@@ -230,6 +232,36 @@ function initMesUI(){
   }
 }
 
+function topEntries(obj, n=8){
+  return Object.entries(obj || {})
+    .filter(([,v]) => Number(v||0) > 0)
+    .sort((a,b)=> Number(b[1]) - Number(a[1]))
+    .slice(0,n);
+}
+
+function renderBars(title, entries){
+  if(!entries || !entries.length) return `<div class="muted">Sem dados para gráfico.</div>`;
+  const max = Math.max(...entries.map(([,v]) => Number(v||0)), 1);
+
+  return `
+    <h4 style="margin:10px 0 6px 0">${title}</h4>
+    <div class="bars">
+      ${entries.map(([label,val])=>{
+        const pct = Math.round((Number(val||0) / max) * 100);
+        return `
+          <div class="bar-row">
+            <div class="bar-head">
+              <div class="bar-label">${label}</div>
+              <div class="bar-value">${money(val)}</div>
+            </div>
+            <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
 function renderMes(){
   const data = loadData();
   const L = data.lancamentos.filter(l=>l.competencia===currentMonth);
@@ -270,6 +302,8 @@ listEl.classList.toggle("bb", currentBank === "Banco do Brasil");
 
     const catsSorted = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
 
+const catEntries = topEntries(byCat, 10);
+
     dashEl.innerHTML = `
       <div class="row"><span class="tag">Bradesco</span><span class="muted">${currentMonth}</span></div>
       <div class="row big"><span>Total disponível</span><span>${money(totalDisponivel)}</span></div>
@@ -282,6 +316,7 @@ listEl.classList.toggle("bb", currentBank === "Banco do Brasil");
       ${catsSorted.map(([k,v])=>`<div class="row"><span>${k}</span><span>${money(v)}</span></div>`).join("")}
       <hr/>
       <div class="row big"><span>Diferença do mês</span><span>${money(resultado)}</span></div>
+      ${renderBars("Gastos por categoria (barra)", catEntries)}
     `;
 
     const list = L
@@ -309,6 +344,9 @@ listEl.classList.toggle("bb", currentBank === "Banco do Brasil");
       byInv[k]=(byInv[k]||0)+Number(l.valor||0);
     });
 
+const catEntries = topEntries(byCat, 10);
+const invEntries = topEntries(byInv, 10);
+
     dashEl.innerHTML = `
       <div class="row"><span class="tag">BB</span><span class="muted">${currentMonth}</span></div>
       <div class="row big"><span>Entradas</span><span>${money(totalEntr)}</span></div>
@@ -324,6 +362,9 @@ listEl.classList.toggle("bb", currentBank === "Banco do Brasil");
       <hr/>
       <h4 style="margin:6px 0">Investimentos por tipo</h4>
       ${Object.entries(byInv).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="row"><span>${k}</span><span>${money(v)}</span></div>`).join("") || "<div class='muted'>Sem investimentos.</div>"}
+      
+      ${renderBars("Gastos por categoria (barra)", catEntries)}
+${renderBars("Investimentos por tipo (barra)", invEntries)}
     `;
 
     const list = L
@@ -665,3 +706,195 @@ function exportExcel(){
   wireCategoryChange();
   renderCatsPreview();
 })();
+
+/* =========================
+   GRÁFICOS — barras empilhadas mês a mês
+========================= */
+
+function initGraficosUI(){
+  const data = loadData();
+  const yearSel = document.getElementById("chart-year");
+  const catSel  = document.getElementById("chart-category");
+  const btn     = document.getElementById("btn-chart-refresh");
+
+  if(!yearSel || !catSel) return;
+
+  // anos disponíveis a partir dos lançamentos
+  const years = new Set();
+  data.lancamentos.forEach(l=>{
+    if(l.competencia && /^\d{4}-\d{2}$/.test(l.competencia)) years.add(l.competencia.slice(0,4));
+  });
+
+  // garantir 2026+ (se quiser começar do zero)
+  if(years.size===0) years.add("2026");
+
+  const yearsArr = Array.from(years).sort();
+  const currentY = String(new Date().getFullYear());
+
+  yearSel.innerHTML = yearsArr.map(y=>`<option value="${y}">${y}</option>`).join("");
+  yearSel.value = yearsArr.includes(currentY) ? currentY : yearsArr[yearsArr.length-1];
+
+  // categorias (do seu cadastro editável)
+  const cats = getCats();
+  const catNames = Object.keys(cats);
+  catSel.innerHTML = catNames.map(c=>`<option value="${c}">${c}</option>`).join("");
+
+  // padrão: Cartão (se existir)
+  if(catNames.includes("Cartão")) catSel.value = "Cartão";
+
+  if(btn) btn.onclick = renderGrafico;
+}
+
+function renderGrafico(){
+  const data = loadData();
+  const year = document.getElementById("chart-year")?.value;
+  const category = document.getElementById("chart-category")?.value;
+
+  if(!year || !category) return;
+
+  // 12 meses do ano
+  const months = Array.from({length:12}, (_,i)=>`${year}-${String(i+1).padStart(2,"0")}`);
+
+  // filtrar lançamentos por mês+categoria
+  // regra:
+  // - Se categoria == "Cartão": usa conta === "Cartão" e categoria === "Cartão"
+  // - Senão: usa despesas do Bradesco + BB (e também "Transferência" se você quiser entrar)
+  let filtered = data.lancamentos.filter(l => months.includes(l.competencia));
+
+  if(category === "Cartão"){
+    filtered = filtered.filter(l => l.conta === "Cartão" && l.categoria === "Cartão");
+  } else {
+    filtered = filtered.filter(l =>
+      (l.tipo === "Despesa" || l.tipo === "Transferência") &&
+      (l.conta === "Bradesco" || l.conta === "Banco do Brasil") &&
+      l.categoria === category
+    );
+  }
+
+  // listar TODAS as subcategorias existentes nessa categoria (no ano)
+  const subSet = new Set();
+  filtered.forEach(l => subSet.add(l.subcategoria || "Outros"));
+  const subs = Array.from(subSet);
+
+  // matriz: subs x 12 meses
+  const values = subs.map(()=> Array(12).fill(0));
+
+  filtered.forEach(l=>{
+    const mIndex = months.indexOf(l.competencia);
+    const sIndex = subs.indexOf(l.subcategoria || "Outros");
+    if(mIndex>=0 && sIndex>=0) values[sIndex][mIndex] += Number(l.valor||0);
+  });
+
+  // desenhar
+  const titleEl = document.getElementById("chart-title");
+  if(titleEl) titleEl.textContent = `${category} — ${year}`;
+
+  drawStackedBarChart("stackedChart", subs, months, values);
+  renderLegend("chart-legend", subs);
+}
+
+function renderLegend(containerId, labels){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  el.innerHTML = labels.map(lbl=>{
+    const c = colorForLabel(lbl);
+    return `
+      <div class="legend-item">
+        <span class="legend-swatch" style="background:${c}"></span>
+        <span>${lbl}</span>
+      </div>
+    `;
+  }).join("");
+}
+
+// cor estável por label (determinística), sem biblioteca
+function colorForLabel(label){
+  let hash = 0;
+  for(let i=0;i<label.length;i++) hash = (hash*31 + label.charCodeAt(i)) >>> 0;
+  const hue = hash % 360;
+  return `hsl(${hue} 70% 55%)`;
+}
+
+// desenha barras empilhadas em canvas
+function drawStackedBarChart(canvasId, seriesLabels, monthLabels, seriesValues){
+  const canvas = document.getElementById(canvasId);
+  if(!canvas) return;
+  const ctx = canvas.getContext("2d");
+
+  // limpar
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // layout
+  const W = canvas.width, H = canvas.height;
+  const padL = 70, padR = 20, padT = 20, padB = 70;
+
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  // totais por mês para definir escala
+  const totals = monthLabels.map((_,m)=>{
+    let t=0;
+    for(let s=0;s<seriesValues.length;s++) t += Number(seriesValues[s][m]||0);
+    return t;
+  });
+
+  const maxY = Math.max(...totals, 1);
+
+  // grid horizontal (5 linhas)
+  ctx.save();
+  ctx.strokeStyle = "rgba(0,0,0,.08)";
+  ctx.lineWidth = 1;
+  for(let i=0;i<=5;i++){
+    const y = padT + (plotH * i/5);
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(W-padR, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // eixo Y labels
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,.65)";
+  ctx.font = "14px system-ui";
+  for(let i=0;i<=5;i++){
+    const val = (maxY * (1 - i/5));
+    const y = padT + (plotH * i/5);
+    ctx.fillText(money(val).replace("R$ ",""), 8, y+5);
+  }
+  ctx.restore();
+
+  // barras
+  const barCount = 12;
+  const gap = 10;
+  const barW = Math.max(10, (plotW - gap*(barCount-1)) / barCount);
+
+  for(let m=0;m<barCount;m++){
+    const x = padL + m*(barW+gap);
+    let yTop = padT + plotH; // começa do chão
+
+    for(let s=0;s<seriesLabels.length;s++){
+      const v = Number(seriesValues[s][m]||0);
+      if(v<=0) continue;
+      const h = (v / maxY) * plotH;
+
+      ctx.fillStyle = colorForLabel(seriesLabels[s]);
+      ctx.fillRect(x, yTop - h, barW, h);
+
+      yTop -= h;
+    }
+
+    // label mês (JAN..DEZ)
+    const mm = monthLabels[m].slice(5,7);
+    const short = ["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"][Number(mm)-1] || mm;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,.75)";
+    ctx.font = "14px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(short, x + barW/2, padT + plotH + 28);
+    ctx.restore();
+  }
+
+  // título (em cima do canvas é no HTML, então aqui não precisa)
+}

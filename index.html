@@ -136,6 +136,50 @@
       color:var(--primary);
       font-weight:700;
     }
+    
+    /* ===== BARRAS (estilo Rotina) ===== */
+.bars { margin-top: 10px; display: grid; gap: 10px; }
+.bar-row { display: grid; gap: 6px; }
+.bar-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+.bar-label { font-weight: 800; }
+.bar-value { color: var(--muted); font-weight: 700; }
+
+.bar-track{
+  width:100%;
+  height: 12px;
+  background: rgba(0,0,0,.07);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.bar-fill{
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: var(--primary);
+}
+    
+    /* ===== GRÁFICOS (canvas) ===== */
+#chart-card { overflow: hidden; }
+#chart-legend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+}
+.legend-item{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  background: var(--pill);
+  padding:6px 10px;
+  border-radius:999px;
+  font-weight:700;
+}
+.legend-swatch{
+  width:12px;
+  height:12px;
+  border-radius:4px;
+  border:1px solid rgba(0,0,0,.12);
+}
   </style>
 </head>
 
@@ -239,6 +283,31 @@
       </div>
     </section>
 
+
+<!-- GRÁFICOS -->
+<section id="view-graficos" class="view">
+  <div class="card">
+    <h3 style="margin:0 0 10px 0">Gráficos</h3>
+
+    <label>Ano</label>
+    <select id="chart-year"></select>
+
+    <label>Categoria</label>
+    <select id="chart-category"></select>
+
+    <div class="row" style="margin-top:8px">
+      <button class="btn small" id="btn-chart-refresh">Atualizar</button>
+    </div>
+
+    <div class="hint">Barras empilhadas por subcategoria (mês a mês).</div>
+  </div>
+
+  <div class="card" id="chart-card">
+    <h4 id="chart-title" style="margin:0 0 10px 0">—</h4>
+    <canvas id="stackedChart" width="900" height="520" style="width:100%;height:auto;border-radius:12px;background:#fff"></canvas>
+    <div id="chart-legend" class="hint" style="margin-top:10px"></div>
+  </div>
+</section>
     <!-- MAIS -->
     <section id="view-mais" class="view">
       <div class="card">
@@ -260,6 +329,7 @@
     <button id="tab-mes" onclick="showView('mes')">Mês</button>
     <button id="tab-cartao" onclick="showView('cartao')">Cartão</button>
     <button id="tab-invest" onclick="showView('invest')">Invest</button>
+    <button id="tab-graficos" onclick="showView('graficos')">Gráficos</button>
     <button id="tab-mais" onclick="showView('mais')">Mais</button>
   </nav>
 
