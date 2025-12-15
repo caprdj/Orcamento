@@ -50,17 +50,18 @@
     }
 
     .card{
-      background:var(--card);
-      border:1px solid var(--border);
-     
-     .bank-bg { border: 1px solid var(--border); }
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:12px;
+  margin:10px 0;
+  box-shadow:0 2px 8px rgba(0,0,0,.03);
+}
+
+/* fundos por banco */
+.bank-bg { border: 1px solid var(--border); }
 .bank-bg.brad { background: var(--brad-bg); }
 .bank-bg.bb   { background: var(--bb-bg); }
-      border-radius:var(--radius);
-      padding:12px;
-      margin:10px 0;
-      box-shadow:0 2px 8px rgba(0,0,0,.03);
-    }
     label{font-size:13px;color:var(--muted)}
     input,select{
       width:100%;

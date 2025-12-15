@@ -606,91 +606,45 @@ function renderInvestimentos(){
 ========================= */
 
 function exportExcel(){
-  if(typeof XLSX==="undefined"){
-    alert("Exportação indisponível: biblioteca XLSX não carregou. (Cache do Pages?)");
-    return;
-  }
+  const data = loadData();
+  const month = currentMonth || ymNow();
+  const L = data.lancamentos.filter(l => l.competencia === month);
 
-  const data=loadData();
-  const month=currentMonth || ymNow();
-  const L=data.lancamentos.filter(l=>l.competencia===month);
+  const rows = [
+    ["id","conta","tipo","categoria","subcategoria","valor","competencia","descricao"],
+    ...L.map(l => [
+      l.id,
+      l.conta,
+      l.tipo,
+      l.categoria,
+      l.subcategoria,
+      Number(l.valor || 0),
+      l.competencia,
+      (l.descricao || "").replace(/\n/g," ")
+    ])
+  ];
 
-  const wb=XLSX.utils.book_new();
+  const csv = rows
+    .map(r => r.map(v => {
+      const s = String(v ?? "");
+      // escape CSV com aspas quando necessário
+      if (/[",;\n]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
+      return s;
+    }).join(";"))
+    .join("\n");
 
-  // Aba Resumo
-  const resumo=[];
-  resumo.push([`Financeiro — ${month}`]);
-  resumo.push([]);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
 
-  // BRAD
-  const renda = L.filter(l=>l.conta==="Bradesco" && l.tipo==="Receita" && l.categoria==="Renda");
-  const rendaPorSub={"Saldo anterior":0,"Salário":0,"13º":0,"Férias":0,"Outros":0};
-  renda.forEach(l=>{
-    const k=l.subcategoria||"Outros";
-    rendaPorSub[k]=(rendaPorSub[k]||0)+Number(l.valor||0);
-  });
-  const totalDisponivel=Object.values(rendaPorSub).reduce((a,b)=>a+b,0);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Financeiro_${month}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 
-  const base=L.filter(l=>l.conta==="Bradesco" && (l.tipo==="Despesa"||l.tipo==="Transferência"));
-  const card=L.filter(l=>l.conta==="Cartão");
-  const totalCartao=card.reduce((a,b)=>a+Number(b.valor||0),0);
-  const byCat=sumByCategory(base);
-  byCat["Cartão"]=totalCartao;
-  const totalGastos=base.reduce((a,b)=>a+Number(b.valor||0),0)+totalCartao;
-  const resultado=totalDisponivel-totalGastos;
-
-  resumo.push(["BRADESCO"]);
-  Object.entries(rendaPorSub).forEach(([k,v])=>resumo.push([k,v]));
-  resumo.push(["Total disponível", totalDisponivel]);
-  resumo.push([]);
-  resumo.push(["Gastos por categoria"]);
-  Object.entries(byCat).forEach(([k,v])=>resumo.push([k,v]));
-  resumo.push(["Total gastos", totalGastos]);
-  resumo.push(["Diferença do mês", resultado]);
-  resumo.push([]);
-
-  // BB
-  const entradas=L.filter(l=>l.conta==="Banco do Brasil" && (l.tipo==="Receita"||l.tipo==="Transferência"));
-  const saidas=L.filter(l=>l.conta==="Banco do Brasil" && l.tipo==="Despesa");
-  const invest=saidas.filter(l=>l.categoria==="Investimentos");
-  const gastos=saidas.filter(l=>l.categoria!=="Investimentos");
-  const totalEntr=entradas.reduce((a,b)=>a+Number(b.valor||0),0);
-  const totalInv=invest.reduce((a,b)=>a+Number(b.valor||0),0);
-  const totalGa=gastos.reduce((a,b)=>a+Number(b.valor||0),0);
-  const resBB=totalEntr-(totalInv+totalGa);
-
-  resumo.push(["BANCO DO BRASIL"]);
-  resumo.push(["Entradas", totalEntr]);
-  resumo.push(["Gastos", totalGa]);
-  resumo.push(["Investimentos", totalInv]);
-  resumo.push(["Resultado BB", resBB]);
-  resumo.push([]);
-
-  // CARTÃO
-  const subs=card.filter(l=>l.tipo==="Assinatura");
-  const geral=card.filter(l=>l.tipo!=="Assinatura");
-  const totalSubs=subs.reduce((a,b)=>a+Number(b.valor||0),0);
-  const totalGer=geral.reduce((a,b)=>a+Number(b.valor||0),0);
-
-  resumo.push(["CARTÃO"]);
-  resumo.push(["Assinaturas", totalSubs]);
-  resumo.push(["Gastos gerais", totalGer]);
-  resumo.push(["Total fatura", totalSubs+totalGer]);
-
-  const wsResumo=XLSX.utils.aoa_to_sheet(resumo);
-  XLSX.utils.book_append_sheet(wb, wsResumo, `Resumo ${month}`);
-
-  // Aba Eventos (para auditoria)
-  const eventos=[["id","conta","tipo","categoria","subcategoria","valor","competencia","descricao"]];
-  L.forEach(l=>{
-    eventos.push([l.id,l.conta,l.tipo,l.categoria,l.subcategoria,Number(l.valor||0),l.competencia,l.descricao||""]);
-  });
-  const wsEv=XLSX.utils.aoa_to_sheet(eventos);
-  XLSX.utils.book_append_sheet(wb, wsEv, `Eventos ${month}`);
-
-  XLSX.writeFile(wb, `Financeiro_${month}.xlsx`);
+  URL.revokeObjectURL(url);
 }
-
 /* =========================
    BOOT
 ========================= */
