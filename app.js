@@ -154,14 +154,32 @@ function showView(view){
     const el=document.getElementById(`view-${v}`);
     if(el) el.classList.toggle("active", v===view);
   });
+
   setActiveTab(view);
 
-  if(view==="mes"){ initMesUI(); renderMes(); }
-  if(view==="cartao"){ initCartaoUI(); renderCartao(); renderSubscriptionsMaster(); }
-  if(view==="invest"){ renderInvestimentos(); }
-  if(view==="mais")
-  if(view==="graficos"){ initGraficosUI(); renderGrafico(); }
-  { renderCatsPreview(); }
+  if(view==="mes"){
+    initMesUI();
+    renderMes();
+  }
+
+  if(view==="cartao"){
+    initCartaoUI();
+    renderCartao();
+    renderSubscriptionsMaster();
+  }
+
+  if(view==="invest"){
+    renderInvestimentos();
+  }
+
+  if(view==="graficos"){
+    initGraficosUI();
+    renderGrafico();
+  }
+
+  if(view==="mais"){
+    renderCatsPreview();
+  }
 }
 
 /* =========================
@@ -718,6 +736,8 @@ function initGraficosUI(){
   const btn     = document.getElementById("btn-chart-refresh");
 
   if(!yearSel || !catSel) return;
+  yearSel.onchange = renderGrafico;
+catSel.onchange  = renderGrafico;
 
   // anos disponíveis a partir dos lançamentos
   // ===== ANOS (sempre aparece pelo menos o ano atual) =====
