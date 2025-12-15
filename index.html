@@ -22,8 +22,11 @@
       --danger:#eb3b5a;
       --pill:#eef2ff;
       --radius:14px;
-      --brad-bg: #fff1f1;   /* vermelho bem claro */
---bb-bg:   #fff8e1;   /* amarelo bem claro */
+      --brad-bg: #fff1f1
+--bb-bg:   #fff8e1;
+--tarja: #f7b731;
+--brad-accent: #b63a3a;   /* vermelho um pouco mais escuro */
+--bb-accent:   #c9a300;   /* amarelo um pouco mais escuro */
     }
     *{box-sizing:border-box}
     body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}
@@ -32,7 +35,7 @@
     /* Topo (tarja arredondada) */
     .topbar{
       margin:14px 14px 0 14px;
-      background:var(--primary);
+      background:var(--tarja);
       color:#fff;
       border-radius:18px;
       padding:14px 16px;
@@ -155,31 +158,82 @@
   height: 100%;
   width: 0%;
   border-radius: 999px;
-  background: var(--primary);
+  background: linear-gradient(90deg, var(--secondary), var(--primary), var(--danger));
 }
+    /* pills do banco (aba Mês) */
+.pillbar.brad .pill{ color: var(--brad-accent); }
+.pillbar.bb .pill{ color: var(--bb-accent); }
+.pillbar.brad .pill.active{ background:#ffecec; }
+.pillbar.bb .pill.active{ background:#fff4c9; }
     
-    /* ===== GRÁFICOS (canvas) ===== */
-#chart-card { overflow: hidden; }
-#chart-legend{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
+    /* ===== ABA MÊS — cores fixas por banco ===== */
+
+/* Texto das pills */
+#view-mes .pill[data-bank="Bradesco"],
+#view-mes .pill.brad-text {
+  color: var(--brad-accent) !important;
+  font-weight: 700;
 }
-.legend-item{
-  display:flex;
-  align-items:center;
-  gap:6px;
-  background: var(--pill);
-  padding:6px 10px;
+
+#view-mes .pill[data-bank="Banco do Brasil"],
+#view-mes .pill.bb-text {
+  color: var(--bb-accent) !important;
+  font-weight: 700;
+}
+
+/* Título do resumo (Bradesco / BB no card) */
+#view-mes .tag {
+  font-weight: 700;
+}
+
+#view-mes .tag:contains("Bradesco"),
+#view-mes .bank-brad {
+  color: var(--brad-accent) !important;
+}
+
+#view-mes .tag:contains("BB"),
+#view-mes .bank-bb {
+  color: var(--bb-accent) !important;
+}
+    /* ===== ABA MÊS — texto fixo por banco ===== */
+#view-mes .pill.brad-text { 
+  color: var(--brad-accent) !important;
+  font-weight: 800;
+}
+#view-mes .pill.bb-text { 
+  color: var(--bb-accent) !important;
+  font-weight: 800;
+}
+
+#view-mes .pill.active.brad-text { color: var(--brad-accent) !important; }
+#view-mes .pill.active.bb-text   { color: var(--bb-accent) !important; }
+
+/* ===== Total disponível: cor por sinal ===== */
+.money-pos{
+  color: var(--secondary);
+  font-weight: 900;
+}
+.money-neg{
+  color: var(--danger);
+  font-weight: 900;
+}
+.badge-ok{
+  display:inline-flex; align-items:center; gap:6px;
+  background: rgba(32,191,107,.12);
+  border:1px solid rgba(32,191,107,.25);
+  padding:4px 10px;
   border-radius:999px;
-  font-weight:700;
+  font-weight:800;
 }
-.legend-swatch{
-  width:12px;
-  height:12px;
-  border-radius:4px;
-  border:1px solid rgba(0,0,0,.12);
+.badge-warn{
+  display:inline-flex; align-items:center; gap:6px;
+  background: rgba(235,59,90,.12);
+  border:1px solid rgba(235,59,90,.25);
+  padding:4px 10px;
+  border-radius:999px;
+  font-weight:800;
 }
+
   </style>
 </head>
 
@@ -225,7 +279,7 @@
         <input id="descricao" placeholder="Ex.: mercado, uber, aporte..." />
 
         <button class="btn secondary" onclick="salvarLancamento()">Salvar</button>
-        <div class="hint">Dica: você edita/exclui depois na tela “Mês”.</div>
+        <div class="hint"></div>
       </div>
     </section>
 
@@ -240,9 +294,9 @@
         </div>
 
         <div class="pillbar" style="margin-top:6px">
-          <button id="pill-brad" class="pill active">Bradesco</button>
-          <button id="pill-bb" class="pill">BB</button>
-        </div>
+  <button id="pill-brad" class="pill brad-text active" data-bank="Bradesco">Bradesco</button>
+  <button id="pill-bb" class="pill bb-text" data-bank="Banco do Brasil">BB</button>
+</div>
         <div class="hint">Alternar banco muda o resumo e a lista.</div>
       </div>
 
@@ -284,30 +338,7 @@
     </section>
 
 
-<!-- GRÁFICOS -->
-<section id="view-graficos" class="view">
-  <div class="card">
-    <h3 style="margin:0 0 10px 0">Gráficos</h3>
 
-    <label>Ano</label>
-    <select id="chart-year"></select>
-
-    <label>Categoria</label>
-    <select id="chart-category"></select>
-
-    <div class="row" style="margin-top:8px">
-      <button class="btn small" id="btn-chart-refresh">Atualizar</button>
-    </div>
-
-    <div class="hint">Barras empilhadas por subcategoria (mês a mês).</div>
-  </div>
-
-  <div class="card" id="chart-card">
-    <h4 id="chart-title" style="margin:0 0 10px 0">—</h4>
-    <canvas id="stackedChart" width="900" height="520" style="width:100%;height:auto;border-radius:12px;background:#fff"></canvas>
-    <div id="chart-legend" class="hint" style="margin-top:10px"></div>
-  </div>
-</section>
     <!-- MAIS -->
     <section id="view-mais" class="view">
       <div class="card">
@@ -329,7 +360,7 @@
     <button id="tab-mes" onclick="showView('mes')">Mês</button>
     <button id="tab-cartao" onclick="showView('cartao')">Cartão</button>
     <button id="tab-invest" onclick="showView('invest')">Invest</button>
-    <button id="tab-graficos" onclick="showView('graficos')">Gráficos</button>
+    
     <button id="tab-mais" onclick="showView('mais')">Mais</button>
   </nav>
 

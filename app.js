@@ -143,14 +143,14 @@ function openCatsManager(){
 ========================= */
 
 function setActiveTab(view){
-  ["lancar","mes","cartao","invest","graficos","mais"].forEach(v=>{
+  ["lancar","mes","cartao","invest","mais"].forEach(v=>{
     const b=document.getElementById(`tab-${v}`);
     if(b) b.classList.toggle("active", v===view);
   });
 }
 
 function showView(view){
-  ["lancar","mes","cartao","invest","graficos","mais"].forEach(v=>{
+  ["lancar","mes","cartao","invest","mais"].forEach(v=>{
     const el=document.getElementById(`view-${v}`);
     if(el) el.classList.toggle("active", v===view);
   });
@@ -172,11 +172,7 @@ function showView(view){
     renderInvestimentos();
   }
 
-  if(view==="graficos"){
-    initGraficosUI();
-    renderGrafico();
-  }
-
+  
   if(view==="mais"){
     renderCatsPreview();
   }
@@ -236,18 +232,30 @@ function initMesUI(){
 
   const pillBrad = document.getElementById("pill-brad");
   const pillBB = document.getElementById("pill-bb");
+  const pillbar = pillBrad?.closest(".pillbar");
+
+  function paintPills(){
+    if(!pillbar) return;
+    pillbar.classList.toggle("brad", currentBank==="Bradesco");
+    pillbar.classList.toggle("bb", currentBank==="Banco do Brasil");
+  }
+
   if(pillBrad && pillBB){
     pillBrad.onclick = ()=>{
       currentBank="Bradesco";
       pillBrad.classList.add("active"); pillBB.classList.remove("active");
+      paintPills();
       renderMes();
     };
     pillBB.onclick = ()=>{
       currentBank="Banco do Brasil";
       pillBB.classList.add("active"); pillBrad.classList.remove("active");
+      paintPills();
       renderMes();
     };
   }
+
+  paintPills();
 }
 
 function topEntries(obj, n=8){
@@ -280,119 +288,180 @@ function renderBars(title, entries){
   `;
 }
 
+function prevMonth(ym){
+  const [y,m] = ym.split("-").map(Number);
+  const d = new Date(y, m-1, 1);
+  d.setMonth(d.getMonth()-1);
+  const yy = d.getFullYear();
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  return `${yy}-${mm}`;
+}
+
+function calcDisponivelMes(bank, ym, data){
+  const L = (data?.lancamentos || []).filter(l => l.competencia === ym);
+
+  if(bank === "Bradesco"){
+    const renda = L.filter(l=>l.conta==="Bradesco" && l.tipo==="Receita" && l.categoria==="Renda");
+    const totalRecebido = renda.reduce((a,b)=>a+Number(b.valor||0),0);
+
+    const base = L.filter(l=>l.conta==="Bradesco" && (l.tipo==="Despesa"||l.tipo==="Transferência"));
+    const totalBase = base.reduce((a,b)=>a+Number(b.valor||0),0);
+
+    const card = L.filter(l=>l.conta==="Cartão");
+    const totalCartao = card.reduce((a,b)=>a+Number(b.valor||0),0);
+
+    const totalGastos = totalBase + totalCartao;
+    return { totalRecebido, totalGastos, disponivel: totalRecebido - totalGastos };
+  }
+
+  // Banco do Brasil
+  const entradas = L.filter(l=>l.conta==="Banco do Brasil" && (l.tipo==="Receita"||l.tipo==="Transferência"));
+  const totalRecebido = entradas.reduce((a,b)=>a+Number(b.valor||0),0);
+
+  const saidas = L.filter(l=>l.conta==="Banco do Brasil" && l.tipo==="Despesa");
+  const totalSaidas = saidas.reduce((a,b)=>a+Number(b.valor||0),0);
+
+  // investimentos (saída de caixa do BB)
+  const inv = L.filter(l=>l.conta==="Banco do Brasil" && l.categoria==="Investimentos");
+  const totalInv = inv.reduce((a,b)=>a+Number(b.valor||0),0);
+
+  const totalGastos = totalSaidas + totalInv;
+  return { totalRecebido, totalGastos, disponivel: totalRecebido - totalGastos };
+}
+
 function renderMes(){
   const data = loadData();
   const L = data.lancamentos.filter(l=>l.competencia===currentMonth);
 
-  // Resumo depende do banco selecionado
   const dashEl = document.getElementById("dashboard");
   const listEl = document.getElementById("listagem");
   if(!dashEl || !listEl) return;
 
-dashEl.classList.add("bank-bg");
-dashEl.classList.toggle("brad", currentBank === "Bradesco");
-dashEl.classList.toggle("bb", currentBank === "Banco do Brasil");
+  // pintar fundos (já existia)
+  dashEl.classList.add("bank-bg");
+  dashEl.classList.toggle("brad", currentBank === "Bradesco");
+  dashEl.classList.toggle("bb", currentBank === "Banco do Brasil");
+  listEl.classList.add("bank-bg");
+  listEl.classList.toggle("brad", currentBank === "Bradesco");
+  listEl.classList.toggle("bb", currentBank === "Banco do Brasil");
 
-listEl.classList.add("bank-bg");
-listEl.classList.toggle("brad", currentBank === "Bradesco");
-listEl.classList.toggle("bb", currentBank === "Banco do Brasil");
+  // saldo anterior automático = disponível do mês anterior
+  const pm = prevMonth(currentMonth);
+  const prev = calcDisponivelMes(currentBank, pm, data);
+  const saldoAnteriorAuto = Number(prev.disponivel || 0);
+
   if(currentBank==="Bradesco"){
-    // Renda
+    // Renda por sub (com saldo anterior automático)
     const renda = L.filter(l=>l.conta==="Bradesco" && l.tipo==="Receita" && l.categoria==="Renda");
-    const rendaPorSub = {
-      "Saldo anterior":0,"Salário":0,"13º":0,"Férias":0,"Outros":0
-    };
-    renda.forEach(l=>{
-      const k=l.subcategoria || "Outros";
-      rendaPorSub[k]=(rendaPorSub[k]||0)+Number(l.valor||0);
-    });
-    const totalDisponivel = Object.values(rendaPorSub).reduce((a,b)=>a+b,0);
+    const rendaPorSub = { "Saldo anterior": saldoAnteriorAuto, "Salário":0,"13º":0,"Férias":0,"Outros":0 };
 
+    renda.forEach(l=>{
+      const k = l.subcategoria || "Outros";
+      if(k === "Saldo anterior") return; // ignora manual
+      rendaPorSub[k] = (rendaPorSub[k]||0) + Number(l.valor||0);
+    });
+
+    const totalRecebido = Object.values(rendaPorSub).reduce((a,b)=>a+Number(b||0),0);
+
+    // gastos
     const base = L.filter(l=>l.conta==="Bradesco" && (l.tipo==="Despesa"||l.tipo==="Transferência"));
     const card = L.filter(l=>l.conta==="Cartão");
     const totalCartao = card.reduce((a,b)=>a+Number(b.valor||0),0);
+    const totalBase = base.reduce((a,b)=>a+Number(b.valor||0),0);
+    const totalGastos = totalBase + totalCartao;
 
+    // disponível = recebido - gastos
+    const totalDisponivel = totalRecebido - totalGastos;
+
+    // gráfico por categoria (sem lista textual)
     const byCat = sumByCategory(base);
-    byCat["Cartão"]=totalCartao;
-
-    const totalGastos = base.reduce((a,b)=>a+Number(b.valor||0),0) + totalCartao;
-    const resultado = totalDisponivel - totalGastos;
-
-    const catsSorted = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
-
-const catEntries = topEntries(byCat, 10);
+    byCat["Cartão"] = (byCat["Cartão"]||0) + totalCartao;
+    const catEntries = topEntries(byCat, 50);
 
     dashEl.innerHTML = `
-      <div class="row"><span class="tag">Bradesco</span><span class="muted">${currentMonth}</span></div>
-      <div class="row big"><span>Total disponível</span><span>${money(totalDisponivel)}</span></div>
+      <div class="row">
+        <span class="tag" style="background:#ffecec;color:var(--brad-accent)">Bradesco</span>
+        <span class="muted">${currentMonth}</span>
+      </div>
 
-      <div class="card" style="margin:10px 0;background:var(--pill)">
-        ${Object.entries(rendaPorSub).map(([k,v])=>`<div class="row"><span>${k}</span><span>${money(v)}</span></div>`).join("")}
+    <div class="row big">
+  <span>Total disponível</span>
+  <span class="${totalDisponivel < 0 ? "badge-warn" : "badge-ok"}">
+    ${money(totalDisponivel)} ${totalDisponivel < 0 ? "⚠️ Atenção" : "✅ Ok"}
+  </span>
+</div>
+
+      <div class="card" style="margin:10px 0;background:#ffecec;border-color:rgba(182,58,58,.2)">
+        ${Object.entries(rendaPorSub).map(([k,v])=>`
+          <div class="row"><span>${k}</span><span>${money(v)}</span></div>
+        `).join("")}
       </div>
 
       <div class="row big"><span>Total gastos</span><span>${money(totalGastos)}</span></div>
-      ${catsSorted.map(([k,v])=>`<div class="row"><span>${k}</span><span>${money(v)}</span></div>`).join("")}
-      <hr/>
-      <div class="row big"><span>Diferença do mês</span><span>${money(resultado)}</span></div>
+
       ${renderBars("Gastos por categoria (barra)", catEntries)}
     `;
 
+    // listagem continua (lançamentos)
     const list = L
       .filter(l=>l.conta==="Bradesco" || l.conta==="Cartão")
       .sort((a,b)=> (a.descricao||"").localeCompare(b.descricao||""));
-
     listEl.innerHTML = `<h4 style="margin:0 0 8px 0">Lançamentos (Bradesco + Cartão)</h4>` + renderLancamentosList(list);
 
   } else {
-    // BB
+    // ===== BB =====
     const entradas = L.filter(l=>l.conta==="Banco do Brasil" && (l.tipo==="Receita"||l.tipo==="Transferência"));
-    const saidas = L.filter(l=>l.conta==="Banco do Brasil" && l.tipo==="Despesa");
-    const invest = saidas.filter(l=>l.categoria==="Investimentos");
-    const gastos = saidas.filter(l=>l.categoria!=="Investimentos");
+    const rendaPorSub = { "Saldo anterior": saldoAnteriorAuto, "Outros":0 };
 
-    const totalEntr = entradas.reduce((a,b)=>a+Number(b.valor||0),0);
-    const totalInv = invest.reduce((a,b)=>a+Number(b.valor||0),0);
-    const totalGast = gastos.reduce((a,b)=>a+Number(b.valor||0),0);
-    const resultado = totalEntr - (totalInv + totalGast);
-
-    const byCat = sumByCategory(gastos);
-    const byInv = {};
-    invest.forEach(l=>{
-      const k=l.subcategoria || "Invest";
-      byInv[k]=(byInv[k]||0)+Number(l.valor||0);
+    entradas.forEach(l=>{
+      const k = l.subcategoria || "Outros";
+      if(k === "Saldo anterior") return;
+      rendaPorSub[k] = (rendaPorSub[k]||0) + Number(l.valor||0);
     });
 
-const catEntries = topEntries(byCat, 10);
-const invEntries = topEntries(byInv, 10);
+    const totalRecebido = Object.values(rendaPorSub).reduce((a,b)=>a+Number(b||0),0);
+
+    const saidas = L.filter(l=>l.conta==="Banco do Brasil" && l.tipo==="Despesa");
+    const totalSaidas = saidas.reduce((a,b)=>a+Number(b.valor||0),0);
+
+    const inv = L.filter(l=>l.conta==="Banco do Brasil" && l.categoria==="Investimentos");
+    const totalInv = inv.reduce((a,b)=>a+Number(b.valor||0),0);
+
+    const totalGastos = totalSaidas + totalInv;
+    const totalDisponivel = totalRecebido - totalGastos;
+
+    const byCat = sumByCategory(saidas);
+    const catEntries = topEntries(byCat, 50);
 
     dashEl.innerHTML = `
-      <div class="row"><span class="tag">BB</span><span class="muted">${currentMonth}</span></div>
-      <div class="row big"><span>Entradas</span><span>${money(totalEntr)}</span></div>
-      <div class="row"><span>Gastos</span><span>${money(totalGast)}</span></div>
-      <div class="row"><span>Investimentos</span><span>${money(totalInv)}</span></div>
-      <hr/>
-      <div class="row big"><span>Resultado BB</span><span>${money(resultado)}</span></div>
+      <div class="row">
+        <span class="tag" style="background:#fff4c9;color:var(--bb-accent)">BB</span>
+        <span class="muted">${currentMonth}</span>
+      </div>
 
-      <hr/>
-      <h4 style="margin:6px 0">Gastos por categoria</h4>
-      ${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="row"><span>${k}</span><span>${money(v)}</span></div>`).join("") || "<div class='muted'>Sem gastos.</div>"}
+     <div class="row big">
+  <span>Total disponível</span>
+  <span class="${totalDisponivel < 0 ? "badge-warn" : "badge-ok"}">
+    ${money(totalDisponivel)} ${totalDisponivel < 0 ? "⚠️ Atenção" : "✅ Ok"}
+  </span>
+</div>
+      <div class="card" style="margin:10px 0;background:#fff4c9;border-color:rgba(201,163,0,.25)">
+        ${Object.entries(rendaPorSub).map(([k,v])=>`
+          <div class="row"><span>${k}</span><span>${money(v)}</span></div>
+        `).join("")}
+      </div>
 
-      <hr/>
-      <h4 style="margin:6px 0">Investimentos por tipo</h4>
-      ${Object.entries(byInv).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="row"><span>${k}</span><span>${money(v)}</span></div>`).join("") || "<div class='muted'>Sem investimentos.</div>"}
-      
+      <div class="row big"><span>Total gastos</span><span>${money(totalGastos)}</span></div>
+
       ${renderBars("Gastos por categoria (barra)", catEntries)}
-${renderBars("Investimentos por tipo (barra)", invEntries)}
     `;
 
     const list = L
       .filter(l=>l.conta==="Banco do Brasil")
       .sort((a,b)=> (a.descricao||"").localeCompare(b.descricao||""));
-
     listEl.innerHTML = `<h4 style="margin:0 0 8px 0">Lançamentos (BB)</h4>` + renderLancamentosList(list);
   }
 }
-
 function renderLancamentosList(list){
   if(!list.length) return "<div class='muted'>Sem lançamentos neste mês.</div>";
 
@@ -725,212 +794,3 @@ function exportExcel(){
   renderCatsPreview();
 })();
 
-/* =========================
-   GRÁFICOS — barras empilhadas mês a mês
-========================= */
-
-function initGraficosUI(){
-  const data = loadData();
-  const yearSel = document.getElementById("chart-year");
-  const catSel  = document.getElementById("chart-category");
-  const btn     = document.getElementById("btn-chart-refresh");
-
-  if(!yearSel || !catSel) return;
-  yearSel.onchange = renderGrafico;
-catSel.onchange  = renderGrafico;
-
-  // anos disponíveis a partir dos lançamentos
-  // ===== ANOS (sempre aparece pelo menos o ano atual) =====
-const currentY = String(new Date().getFullYear());
-const years = new Set([currentY]);
-
-data.lancamentos.forEach(l=>{
-  if(l.competencia && /^\d{4}-\d{2}$/.test(l.competencia)) {
-    years.add(l.competencia.slice(0,4));
-  }
-});
-
-const yearsArr = Array.from(years).sort();
-yearSel.innerHTML = yearsArr.map(y=>`<option value="${y}">${y}</option>`).join("");
-yearSel.value = currentY;
- // ===== CATEGORIAS (garantir que nunca fica vazio) =====
-let cats = getCats();
-
-if(!cats || Object.keys(cats).length === 0){
-  cats = {
-    "Cartão": ["Assinaturas","Compras"],
-    "Habitação": ["Condomínio","Prestação","Outros"],
-    "Saúde": ["Plano","Farmácia","Consultas"],
-    "Alimentação": ["Mercado","Restaurante"],
-    "Transporte": ["Uber","Passagem"],
-    "Cursos": ["Cursos","Outros"],
-    "Pessoal": ["Diversos"],
-    "Lazer": ["Diversos"],
-    "Outros gastos": ["Diversos"],
-    "Investimentos": ["Ações","FII","Poupança","Previdência"]
-  };
-  setCats(cats);
-}
-
-const catNames = Object.keys(cats);
-catSel.innerHTML = catNames.map(c=>`<option value="${c}">${c}</option>`).join("");
-catSel.value = catNames.includes("Cartão") ? "Cartão" : catNames[0];
-
-  if(btn) btn.onclick = renderGrafico;
-  renderGrafico();
-}
-
-
-function renderGrafico(){
-  const data = loadData();
-  const year = document.getElementById("chart-year")?.value;
-  const category = document.getElementById("chart-category")?.value;
-
-  if(!year || !category) return;
-
-  // 12 meses do ano
-  const months = Array.from({length:12}, (_,i)=>`${year}-${String(i+1).padStart(2,"0")}`);
-
-  // filtrar lançamentos por mês+categoria
-  // regra:
-  // - Se categoria == "Cartão": usa conta === "Cartão" e categoria === "Cartão"
-  // - Senão: usa despesas do Bradesco + BB (e também "Transferência" se você quiser entrar)
-  let filtered = data.lancamentos.filter(l => months.includes(l.competencia));
-
-  if(category === "Cartão"){
-    filtered = filtered.filter(l => l.conta === "Cartão" && l.categoria === "Cartão");
-  } else {
-    filtered = filtered.filter(l =>
-      (l.tipo === "Despesa" || l.tipo === "Transferência") &&
-      (l.conta === "Bradesco" || l.conta === "Banco do Brasil") &&
-      l.categoria === category
-    );
-  }
-
-  // listar TODAS as subcategorias existentes nessa categoria (no ano)
-  const subSet = new Set();
-  filtered.forEach(l => subSet.add(l.subcategoria || "Outros"));
-  const subs = Array.from(subSet);
-
-  // matriz: subs x 12 meses
-  const values = subs.map(()=> Array(12).fill(0));
-
-  filtered.forEach(l=>{
-    const mIndex = months.indexOf(l.competencia);
-    const sIndex = subs.indexOf(l.subcategoria || "Outros");
-    if(mIndex>=0 && sIndex>=0) values[sIndex][mIndex] += Number(l.valor||0);
-  });
-
-  // desenhar
-  const titleEl = document.getElementById("chart-title");
-  if(titleEl) titleEl.textContent = `${category} — ${year}`;
-
-  drawStackedBarChart("stackedChart", subs, months, values);
-  renderLegend("chart-legend", subs);
-}
-
-function renderLegend(containerId, labels){
-  const el = document.getElementById(containerId);
-  if(!el) return;
-  el.innerHTML = labels.map(lbl=>{
-    const c = colorForLabel(lbl);
-    return `
-      <div class="legend-item">
-        <span class="legend-swatch" style="background:${c}"></span>
-        <span>${lbl}</span>
-      </div>
-    `;
-  }).join("");
-}
-
-// cor estável por label (determinística), sem biblioteca
-function colorForLabel(label){
-  let hash = 0;
-  for(let i=0;i<label.length;i++) hash = (hash*31 + label.charCodeAt(i)) >>> 0;
-  const hue = hash % 360;
-  return `hsl(${hue} 70% 55%)`;
-}
-
-// desenha barras empilhadas em canvas
-function drawStackedBarChart(canvasId, seriesLabels, monthLabels, seriesValues){
-  const canvas = document.getElementById(canvasId);
-  if(!canvas) return;
-  const ctx = canvas.getContext("2d");
-
-  // limpar
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  // layout
-  const W = canvas.width, H = canvas.height;
-  const padL = 70, padR = 20, padT = 20, padB = 70;
-
-  const plotW = W - padL - padR;
-  const plotH = H - padT - padB;
-
-  // totais por mês para definir escala
-  const totals = monthLabels.map((_,m)=>{
-    let t=0;
-    for(let s=0;s<seriesValues.length;s++) t += Number(seriesValues[s][m]||0);
-    return t;
-  });
-
-  const maxY = Math.max(...totals, 1);
-
-  // grid horizontal (5 linhas)
-  ctx.save();
-  ctx.strokeStyle = "rgba(0,0,0,.08)";
-  ctx.lineWidth = 1;
-  for(let i=0;i<=5;i++){
-    const y = padT + (plotH * i/5);
-    ctx.beginPath();
-    ctx.moveTo(padL, y);
-    ctx.lineTo(W-padR, y);
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  // eixo Y labels
-  ctx.save();
-  ctx.fillStyle = "rgba(0,0,0,.65)";
-  ctx.font = "14px system-ui";
-  for(let i=0;i<=5;i++){
-    const val = (maxY * (1 - i/5));
-    const y = padT + (plotH * i/5);
-    ctx.fillText(money(val).replace("R$ ",""), 8, y+5);
-  }
-  ctx.restore();
-
-  // barras
-  const barCount = 12;
-  const gap = 10;
-  const barW = Math.max(10, (plotW - gap*(barCount-1)) / barCount);
-
-  for(let m=0;m<barCount;m++){
-    const x = padL + m*(barW+gap);
-    let yTop = padT + plotH; // começa do chão
-
-    for(let s=0;s<seriesLabels.length;s++){
-      const v = Number(seriesValues[s][m]||0);
-      if(v<=0) continue;
-      const h = (v / maxY) * plotH;
-
-      ctx.fillStyle = colorForLabel(seriesLabels[s]);
-      ctx.fillRect(x, yTop - h, barW, h);
-
-      yTop -= h;
-    }
-
-    // label mês (JAN..DEZ)
-    const mm = monthLabels[m].slice(5,7);
-    const short = ["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"][Number(mm)-1] || mm;
-
-    ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,.75)";
-    ctx.font = "14px system-ui";
-    ctx.textAlign = "center";
-    ctx.fillText(short, x + barW/2, padT + plotH + 28);
-    ctx.restore();
-  }
-
-  // título (em cima do canvas é no HTML, então aqui não precisa)
-}
