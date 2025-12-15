@@ -720,30 +720,46 @@ function initGraficosUI(){
   if(!yearSel || !catSel) return;
 
   // anos disponíveis a partir dos lançamentos
-  const years = new Set();
-  data.lancamentos.forEach(l=>{
-    if(l.competencia && /^\d{4}-\d{2}$/.test(l.competencia)) years.add(l.competencia.slice(0,4));
-  });
+  // ===== ANOS (sempre aparece pelo menos o ano atual) =====
+const currentY = String(new Date().getFullYear());
+const years = new Set([currentY]);
 
-  // garantir 2026+ (se quiser começar do zero)
-  if(years.size===0) years.add("2026");
+data.lancamentos.forEach(l=>{
+  if(l.competencia && /^\d{4}-\d{2}$/.test(l.competencia)) {
+    years.add(l.competencia.slice(0,4));
+  }
+});
 
-  const yearsArr = Array.from(years).sort();
-  const currentY = String(new Date().getFullYear());
+const yearsArr = Array.from(years).sort();
+yearSel.innerHTML = yearsArr.map(y=>`<option value="${y}">${y}</option>`).join("");
+yearSel.value = currentY;
+ // ===== CATEGORIAS (garantir que nunca fica vazio) =====
+let cats = getCats();
 
-  yearSel.innerHTML = yearsArr.map(y=>`<option value="${y}">${y}</option>`).join("");
-  yearSel.value = yearsArr.includes(currentY) ? currentY : yearsArr[yearsArr.length-1];
+if(!cats || Object.keys(cats).length === 0){
+  cats = {
+    "Cartão": ["Assinaturas","Compras"],
+    "Habitação": ["Condomínio","Prestação","Outros"],
+    "Saúde": ["Plano","Farmácia","Consultas"],
+    "Alimentação": ["Mercado","Restaurante"],
+    "Transporte": ["Uber","Passagem"],
+    "Cursos": ["Cursos","Outros"],
+    "Pessoal": ["Diversos"],
+    "Lazer": ["Diversos"],
+    "Outros gastos": ["Diversos"],
+    "Investimentos": ["Ações","FII","Poupança","Previdência"]
+  };
+  setCats(cats);
+}
 
-  // categorias (do seu cadastro editável)
-  const cats = getCats();
-  const catNames = Object.keys(cats);
-  catSel.innerHTML = catNames.map(c=>`<option value="${c}">${c}</option>`).join("");
-
-  // padrão: Cartão (se existir)
-  if(catNames.includes("Cartão")) catSel.value = "Cartão";
+const catNames = Object.keys(cats);
+catSel.innerHTML = catNames.map(c=>`<option value="${c}">${c}</option>`).join("");
+catSel.value = catNames.includes("Cartão") ? "Cartão" : catNames[0];
 
   if(btn) btn.onclick = renderGrafico;
+  renderGrafico();
 }
+
 
 function renderGrafico(){
   const data = loadData();
