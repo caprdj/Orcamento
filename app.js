@@ -2146,3 +2146,65 @@ function openCats(){
   updateLaunchUI();
   renderCatsPreview();
 })();
+
+// =========================
+// PWA: Botão "Atualizar app"
+// =========================
+window.checkForUpdate = async function checkForUpdate() {
+  const statusEl = document.getElementById("pwa-update-status");
+  const setStatus = (t) => { if (statusEl) statusEl.textContent = t; };
+
+  if (!("serviceWorker" in navigator)) {
+    setStatus("Este navegador não suporta atualização via Service Worker.");
+    return;
+  }
+
+  setStatus("Verificando atualização…");
+
+  let reg;
+  try {
+    // garante que o SW já está pronto/controlando
+    reg = await navigator.serviceWorker.ready;
+  } catch (e) {
+    setStatus("Service Worker não está ativo ainda. Reabra o app e tente de novo.");
+    return;
+  }
+
+  // força checagem no servidor
+  try { await reg.update(); } catch {}
+
+  const applyUpdate = () => {
+    const waiting = reg.waiting;
+    if (!waiting) { setStatus("Sem atualização disponível."); return; }
+
+    const ok = confirm("Nova versão disponível. Atualizar agora?");
+    if (!ok) { setStatus("Atualização disponível (não aplicada)."); return; }
+
+    setStatus("Aplicando atualização…");
+
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloaded) return;
+      reloaded = true;
+      location.reload();
+    });
+
+    // pede pro SW “assumir” sem esperar fechar todas as abas
+    waiting.postMessage({ type: "SKIP_WAITING" });
+  };
+
+  // Se já tem uma versão nova “esperando”, aplica
+  if (reg.waiting) return applyUpdate();
+
+  // Se está instalando agora, espera terminar
+  if (reg.installing) {
+    reg.installing.addEventListener("statechange", () => {
+      if (reg.installing.state === "installed") applyUpdate();
+    });
+    return;
+  }
+
+  // Caso comum: não achou nada novo
+  setStatus("Sem atualização (já está em dia).");
+};
+
