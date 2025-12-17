@@ -194,398 +194,6 @@ function loadData(){ return window.StorageAPI.load(); }
 function saveData(data){ window.StorageAPI.save(data); }
 
 /* =========================
-   INVEST — ATIVOS & MOVIMENTOS (fluxo)
-========================= */
-
-const INVEST_MOV_LABEL = {
-  aplic: "APLIC",
-  rend: "REND",
-  retir: "RETIR",
-  "ajuste+": "AJUSTE+",
-  "ajuste-": "AJUSTE-"
-};
-
-function investKindLabel(kind){
-  if(kind === "fii") return "FII";
-  if(kind === "acao") return "Ações";
-  if(kind === "poupanca") return "Poupança";
-  return "Outros";
-}
-
-function seedInvestAssets(){
-  // Lista inicial (você pode editar/ativar/desativar depois)
-  const poups = [
-    { code:"81", name:"Viagem" },
-    { code:"82", name:"Reforma" },
-    { code:"83", name:"Carro" },
-    { code:"84", name:"IPTU" },
-  ];
-  const fiis = [
-    "BCRO11","FGAA11","KNCA11","KNCR11","LVBI11","MAXR11","MCCI11","PVBI11",
-    "RBRF11","RBRR11","RBVA11","RZTR11","XPLM11","KAFOF11","XPSF11"
-  ];
-  const acoes = ["NTCO3","BBAS3F","BBDC4F","PETR3F","VALE3F"];
-
-  const out = [];
-  poups.forEach(p=> out.push({ id: uid(), kind:"poupanca", code:p.code, name:p.name, active:true }));
-  fiis.forEach(t=> out.push({ id: uid(), kind:"fii", code:t, name:t, active:true }));
-  acoes.forEach(t=> out.push({ id: uid(), kind:"acao", code:t, name:t, active:true }));
-  return out;
-}
-
-function ensureInvestAssets(data){
-  data.investAssets = Array.isArray(data.investAssets) ? data.investAssets : [];
-  if(!data.investAssets.length){
-    data.investAssets = seedInvestAssets();
-  }else{
-    // normaliza campos mínimos
-    data.investAssets.forEach(a=>{
-      if(!a.id) a.id = uid();
-      a.kind = a.kind || "outros";
-      a.code = (a.code||"").toString().trim();
-      a.name = (a.name||a.code||"").toString().trim();
-      if(typeof a.active !== "boolean") a.active = true;
-    });
-  }
-}
-
-function getInvestAssets(data){
-  ensureInvestAssets(data);
-  return data.investAssets;
-}
-
-function findInvestAssetById(data, id){
-  if(!id) return null;
-  return getInvestAssets(data).find(a=>a.id===id) || null;
-}
-
-function findInvestAssetByCode(data, codeRaw){
-  const code = (codeRaw||"").toString().trim().toUpperCase();
-  if(!code) return null;
-  return getInvestAssets(data).find(a=>String(a.code||"").toUpperCase()===code) || null;
-}
-
-function investAssetLabel(data, assetId){
-  const a = findInvestAssetById(data, assetId);
-  if(!a) return "(sem ativo)";
-  if(a.kind === "poupanca"){
-    const code = (a.code||"").trim();
-    const name = (a.name||"").trim();
-    return (code && name) ? `${code} - ${name}` : (name || code || "(poupança)");
-  }
-  return (a.code||a.name||"(ativo)").toString().trim();
-}
-
-function fillInvestAssetSelect(selectedId){
-  const data = loadData();
-  ensureInvestAssets(data);
-
-  const sel = document.getElementById("invest-asset");
-  if(!sel) return;
-
-  const assets = getInvestAssets(data).slice();
-  const actives = assets.filter(a=>a.active);
-
-  const groups = [
-    { kind:"poupanca", label:"Poupança", items: actives.filter(a=>a.kind==="poupanca") },
-    { kind:"fii", label:"FIIs", items: actives.filter(a=>a.kind==="fii") },
-    { kind:"acao", label:"Ações", items: actives.filter(a=>a.kind==="acao") },
-    { kind:"outros", label:"Outros", items: actives.filter(a=>!["poupanca","fii","acao"].includes(a.kind)) },
-  ].filter(g=>g.items.length);
-
-  const option = (id, label)=>`<option value="${id}">${label}</option>`;
-
-  let html = `<option value="">— Selecione —</option>`;
-  groups.forEach(g=>{
-    html += `<optgroup label="${g.label}">` +
-      g.items
-        .slice()
-        .sort((a,b)=>String(a.code||a.name||"").localeCompare(String(b.code||b.name||""), "pt-BR"))
-        .map(a=>option(a.id, investAssetLabel(data, a.id)))
-        .join("") +
-      `</optgroup>`;
-  });
-
-  sel.innerHTML = html;
-  if(selectedId) sel.value = selectedId;
-}
-
-function promptAddInvestAsset(){
-  const data = loadData();
-  ensureInvestAssets(data);
-
-  const kindRaw = prompt("Tipo do ativo (poupanca / fii / acao):", "fii");
-  if(kindRaw === null) return null;
-  const kind = (kindRaw||"").toLowerCase().trim();
-  if(!["poupanca","fii","acao","outros"].includes(kind)){
-    alert("Tipo inválido. Use: poupanca, fii, acao.");
-    return null;
-  }
-
-  const codeRaw = prompt("Código/Ticker (ex: BCRO11 ou 81):", "");
-  if(codeRaw === null) return null;
-  const code = (codeRaw||"").toString().trim().toUpperCase();
-  if(!code) return alert("Código obrigatório."), null;
-
-  // se já existe, apenas reativa e retorna
-  const existing = findInvestAssetByCode(data, code);
-  if(existing){
-    existing.active = true;
-    saveData(data);
-    return existing.id;
-  }
-
-  const defaultName = kind === "poupanca" ? "" : code;
-  const nameRaw = prompt("Nome/Apelido (opcional):", defaultName);
-  if(nameRaw === null) return null;
-  const name = (nameRaw||"").toString().trim() || defaultName || code;
-
-  const asset = { id: uid(), kind, code, name, active:true };
-  data.investAssets.push(asset);
-  saveData(data);
-  return asset.id;
-}
-
-function addInvestAssetFromLaunch(){
-  const createdId = promptAddInvestAsset();
-  if(!createdId) return;
-  fillInvestAssetSelect(createdId);
-}
-
-function normalizeInvestMovValue(l){
-  const raw = (l.investMov || "").toString().trim();
-  if(!raw) return "";
-
-  // já no novo formato
-  if(["aplic","rend","retir","ajuste+","ajuste-"].includes(raw)) return raw;
-
-  // legado (v6)
-  if(raw === "saida") return "aplic";
-  if(raw === "entrada"){
-    const d = (l.descricao||"").toString().toLowerCase();
-    if(/resgate|venda|retir|retirada|resg/.test(d)) return "retir";
-    return "rend";
-  }
-
-  return raw;
-}
-
-function tryInferInvestAssetId(data, l){
-  if(l.investAssetId) return;
-
-  const desc = (l.descricao||"").toString();
-  const descU = desc.toUpperCase();
-  const descL = desc.toLowerCase();
-
-  // match tickers/códigos
-  const assets = getInvestAssets(data);
-
-  // 1) FIIs / ações por código exato
-  for(const a of assets){
-    const code = (a.code||"").toString().trim();
-    if(!code) continue;
-
-    if(a.kind === "fii" || a.kind === "acao"){
-      if(descU.includes(code.toUpperCase())){
-        l.investAssetId = a.id;
-        return;
-      }
-    }
-  }
-
-  // 2) poupanças por nome (viagem/reforma/carro/iptu) ou código como token
-  for(const a of assets.filter(x=>x.kind==="poupanca")){
-    const code = (a.code||"").toString().trim();
-    const name = (a.name||"").toString().trim().toLowerCase();
-
-    if(name && descL.includes(name)){
-      l.investAssetId = a.id; return;
-    }
-    if(code){
-      const re = new RegExp(`\\b${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
-      if(re.test(desc)){
-        l.investAssetId = a.id; return;
-      }
-      if(desc.includes(`${code}-`) || desc.includes(`${code} -`) || desc.includes(`${code}–`) || desc.includes(`${code}—`)){
-        l.investAssetId = a.id; return;
-      }
-    }
-  }
-}
-
-function migrateInvestDataIfNeeded(){
-  const data = loadData();
-  ensureInvestAssets(data);
-
-  let changed = false;
-
-  data.lancamentos = Array.isArray(data.lancamentos) ? data.lancamentos : [];
-  data.lancamentos.forEach(l=>{
-    const isInvest = (l.conta === "Banco do Brasil" && l.categoria === "Investimentos");
-    if(!isInvest) return;
-
-    const mv = normalizeInvestMovValue(l);
-    if(mv && mv !== l.investMov){
-      l.investMov = mv;
-      changed = true;
-    }
-
-    if(!l.investAssetId){
-      tryInferInvestAssetId(data, l);
-      if(l.investAssetId) changed = true;
-    }
-
-    // tipo coerente com movimento (fluxo)
-    if(l.investMov){
-      const shouldTipo = (["aplic","ajuste-"].includes(l.investMov)) ? "Despesa" : "Receita";
-      if(l.tipo !== shouldTipo && l.tipo !== "Transferência"){
-        l.tipo = shouldTipo;
-        changed = true;
-      }
-    }
-  });
-
-  if(changed) saveData(data);
-}
-
-function renderInvestAssetsManager(){
-  const data = loadData();
-  ensureInvestAssets(data);
-
-  const assets = getInvestAssets(data).slice().sort((a,b)=>{
-    const ka = investKindLabel(a.kind);
-    const kb = investKindLabel(b.kind);
-    if(ka !== kb) return ka.localeCompare(kb, "pt-BR");
-    return String(a.code||a.name||"").localeCompare(String(b.code||b.name||""), "pt-BR");
-  });
-
-  if(!assets.length) return `<div class="muted">Nenhum ativo cadastrado.</div>`;
-
-  const usedCount = (id)=> (data.lancamentos||[]).filter(l=>l.investAssetId===id).length;
-
-  return `
-    <div style="overflow:auto;border:1px solid var(--border);border-radius:12px">
-      <table style="width:100%;border-collapse:collapse;min-width:720px">
-        <thead>
-          <tr>
-            <th style="text-align:left;padding:10px;border-bottom:1px solid var(--border)">Ativo</th>
-            <th style="text-align:left;padding:10px;border-bottom:1px solid var(--border)">Tipo</th>
-            <th style="text-align:center;padding:10px;border-bottom:1px solid var(--border)">Status</th>
-            <th style="text-align:center;padding:10px;border-bottom:1px solid var(--border)">Lanç.</th>
-            <th style="text-align:right;padding:10px;border-bottom:1px solid var(--border)">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${assets.map(a=>{
-            const status = a.active ? "Ativo" : "Inativo";
-            const count = usedCount(a.id);
-            return `
-              <tr>
-                <td style="padding:10px;border-bottom:1px solid var(--border)">${investAssetLabel(data, a.id)}</td>
-                <td style="padding:10px;border-bottom:1px solid var(--border)">${investKindLabel(a.kind)}</td>
-                <td style="padding:10px;border-bottom:1px solid var(--border);text-align:center">${status}</td>
-                <td style="padding:10px;border-bottom:1px solid var(--border);text-align:center">${count}</td>
-                <td style="padding:10px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap">
-                  <button class="btn small" onclick="investAssetEdit('${a.id}')">Editar</button>
-                  <button class="btn small" onclick="investAssetToggle('${a.id}')">${a.active ? "Desativar" : "Ativar"}</button>
-                  <button class="btn small danger" onclick="investAssetDelete('${a.id}')">Excluir</button>
-                </td>
-              </tr>
-            `;
-          }).join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-function investAssetAddFromManager(){
-  const createdId = promptAddInvestAsset();
-  if(!createdId) return;
-  fillInvestAssetSelect(createdId);
-  renderInvestimentos();
-}
-
-function investAssetToggle(id){
-  const data = loadData();
-  ensureInvestAssets(data);
-  const a = findInvestAssetById(data, id);
-  if(!a) return;
-  a.active = !a.active;
-  saveData(data);
-  fillInvestAssetSelect();
-  renderInvestimentos();
-}
-
-function investAssetEdit(id){
-  const data = loadData();
-  ensureInvestAssets(data);
-
-  const a = findInvestAssetById(data, id);
-  if(!a) return;
-
-  const used = (data.lancamentos||[]).some(l=>l.investAssetId===id);
-
-  const kindRaw = prompt("Tipo do ativo (poupanca / fii / acao):", a.kind||"fii");
-  if(kindRaw === null) return;
-  const kind = (kindRaw||"").toLowerCase().trim();
-  if(!["poupanca","fii","acao","outros"].includes(kind)){
-    alert("Tipo inválido.");
-    return;
-  }
-
-  if(!used){
-    const codeRaw = prompt("Código/Ticker:", a.code||"");
-    if(codeRaw === null) return;
-    const code = (codeRaw||"").toString().trim().toUpperCase();
-    if(!code) return alert("Código obrigatório.");
-    a.code = code;
-  }else{
-    alert("Este ativo já tem lançamentos. Por segurança, o código/ticker não pode ser alterado (apenas nome/tipo).");
-  }
-
-  const defaultName = (a.kind === "poupanca") ? (a.name||"") : (a.name||a.code||"");
-  const nameRaw = prompt("Nome/Apelido:", defaultName);
-  if(nameRaw === null) return;
-  const name = (nameRaw||"").toString().trim() || defaultName || a.code;
-
-  a.kind = kind;
-  a.name = name;
-
-  saveData(data);
-  fillInvestAssetSelect();
-  renderInvestimentos();
-}
-
-function investAssetDelete(id){
-  const data = loadData();
-  ensureInvestAssets(data);
-
-  const a = findInvestAssetById(data, id);
-  if(!a) return;
-
-  const used = (data.lancamentos||[]).some(l=>l.investAssetId===id);
-  if(used){
-    alert("Este ativo já tem lançamentos. Em vez de excluir, ele será desativado para manter o histórico.");
-    a.active = false;
-    saveData(data);
-    fillInvestAssetSelect();
-    renderInvestimentos();
-    return;
-  }
-
-  const ok = confirm(`Excluir o ativo ${investAssetLabel(data, id)}?`);
-  if(!ok) return;
-
-  data.investAssets = getInvestAssets(data).filter(x=>x.id!==id);
-  saveData(data);
-  fillInvestAssetSelect();
-  renderInvestimentos();
-}
-
-
-
-/* =========================
    CATEGORIES (EDITÁVEIS)
 ========================= */
 
@@ -628,7 +236,6 @@ function wireCategoryChange(){
   const categoriaSelect = document.getElementById("categoria");
   const contaSelect = document.getElementById("conta");
   const investMov = document.getElementById("invest-mov");
-  const investAsset = document.getElementById("invest-asset");
   if(categoriaSelect){
     categoriaSelect.addEventListener("change", ()=>{
       fillCategorySelects();
@@ -643,9 +250,6 @@ function wireCategoryChange(){
   }
   if(investMov){
     investMov.addEventListener("change", updateLaunchUI);
-  }
-  if(investAsset){
-    investAsset.addEventListener("change", updateLaunchUI);
   }
 }
 
@@ -666,19 +270,9 @@ function updateLaunchUI(){
   if(tipoSel){
     if(isInvest){
       tipoSel.disabled = true;
-      const mv = mov?.value || "aplic";
-      // garante a lista de ativos atualizada
-      const currentAsset = document.getElementById("invest-asset")?.value || "";
-      fillInvestAssetSelect(currentAsset);
-      if(currentAsset){
-        const d2 = loadData();
-        const a2 = findInvestAssetById(d2, currentAsset);
-        const subSel = document.getElementById("subcategoria");
-        if(a2 && subSel) subSel.value = investKindLabel(a2.kind);
-      }
-
-      if(["rend","retir","ajuste+"].includes(mv)) tipoSel.value = "Receita";
-      else if(["aplic","ajuste-"].includes(mv)) tipoSel.value = "Despesa";
+      const mv = mov?.value || "saida";
+      if(mv === "entrada" || mv === "ajuste+") tipoSel.value = "Receita";
+      else if(mv === "saida" || mv === "ajuste-") tipoSel.value = "Despesa";
     }else{
       tipoSel.disabled = false;
     }
@@ -747,70 +341,20 @@ function salvarLancamento(){
   const descricao = document.getElementById("descricao")?.value || "";
   const destinoTrf = document.getElementById("destinoTrf")?.value || "";
 
-  // Investimentos (modo fluxo): Tipo (Receita/Despesa) e Subcategoria são derivados do movimento + ativo.
+  // Investimentos (modo fluxo): deriva o Tipo (Receita/Despesa) a partir do movimento.
   let investMov = "";
-  let investAssetId = "";
   let finalTipo = tipo;
-  let finalSub = subcategoria;
 
-  const isInvest = (conta === "Banco do Brasil" && categoria === "Investimentos");
-
-  if(isInvest){
-    ensureInvestAssets(data);
-
-    investMov = document.getElementById("invest-mov")?.value || "aplic";
-    investMov = normalizeInvestMovValue({ investMov, descricao });
-
-    investAssetId = document.getElementById("invest-asset")?.value || "";
-    if(!investAssetId){
-      alert("Selecione um ativo (ou cadastre em + Ativo).");
-      return;
-    }
-
-    const a = findInvestAssetById(data, investAssetId);
-    finalSub = a ? investKindLabel(a.kind) : "Outros";
-
-    finalTipo = (["aplic","ajuste-"].includes(investMov)) ? "Despesa" : "Receita";
+  if(conta === "Banco do Brasil" && categoria === "Investimentos"){
+    investMov = document.getElementById("invest-mov")?.value || "saida";
+    if(investMov === "entrada" || investMov === "ajuste+") finalTipo = "Receita";
+    else finalTipo = "Despesa";
   }
 
   if(!isFinite(valor) || valor <= 0){
     alert("Informe um valor válido.");
     return;
   }
-
-  // Anti-duplicação (Invest): se já existir REND do mesmo ativo no mês, você pode somar no lançamento existente.
-  if(isInvest && investMov === "rend"){
-    const existing = data.lancamentos.find(x =>
-      x.conta === "Banco do Brasil" &&
-      x.categoria === "Investimentos" &&
-      x.competencia === competencia &&
-      normalizeInvestMovValue(x) === "rend" &&
-      x.investAssetId === investAssetId
-    );
-
-    if(existing){
-      const ok = confirm("Já existe um REND deste ativo neste mês. OK = somar no existente. Cancel = criar um novo.");
-      if(ok){
-        existing.valor = Number(existing.valor||0) + valor;
-        // mantém data mais recente
-        existing.data = dataLanc || existing.data;
-        if(descricao && descricao.trim()){
-          const d0 = (existing.descricao||"").trim();
-          const d1 = descricao.trim();
-          existing.descricao = d0 ? (d0 + " + " + d1) : d1;
-        }
-        saveData(data);
-        document.getElementById("valor").value = "";
-        document.getElementById("descricao").value = "";
-        renderMes();
-        renderCartao();
-        renderInvestimentos();
-        alert("Somado ao REND existente.");
-        return;
-      }
-    }
-  }
-
 
   // id do lançamento original (para linkar espelhos)
   const originalId = uid();
@@ -820,9 +364,8 @@ function salvarLancamento(){
     conta,
     tipo: finalTipo,
     categoria,
-    subcategoria: finalSub,
-    investMov: isInvest ? investMov : "",
-    investAssetId: isInvest ? investAssetId : "",
+    subcategoria,
+    investMov,
     valor,
     competencia,
     data: dataLanc,
@@ -947,7 +490,7 @@ function renderBars(title, entries){
   const max = Math.max(...entries.map(([,v])=>Math.abs(v)), 1);
 
   return `
-    <h4 style="margin:10px 0 6px 0">${title}</h4>
+    ${title ? `<h4 style="margin:10px 0 6px 0">${title}</h4>` : ``}
     <div class="bars">
       ${entries.map(([label,val])=>{
         const pct = Math.round((Math.abs(val) / max) * 50);
@@ -975,19 +518,10 @@ function renderBars(title, entries){
 
 
 function renderLancList(list){
-  const data = loadData();
-
   return list
     .slice()
-    .sort((a,b)=> (a.descricao||"").localeCompare(b.descricao||"", "pt-BR"))
-    .map(l=>{
-      const isInv = (l.conta === "Banco do Brasil" && l.categoria === "Investimentos");
-      const mv = isInv ? normalizeInvestMovValue(l) : "";
-      const mvLbl = mv ? (INVEST_MOV_LABEL[mv] || mv.toUpperCase()) : "";
-      const ativoLbl = isInv ? investAssetLabel(data, l.investAssetId) : "";
-      const invExtra = isInv ? (` • ${mvLbl}${ativoLbl ? ` • ${ativoLbl}` : ""}`) : "";
-
-      return `
+    .sort((a,b)=> (a.descricao||"").localeCompare(b.descricao||""))
+    .map(l=>`
     <div class="card" style="margin:10px 0; box-shadow:none">
       <div class="tags">
   <span class="tag ${accountTagClass(l.conta)}">${l.conta}</span>
@@ -996,7 +530,7 @@ function renderLancList(list){
     (l.tipo==="Despesa" || l.tipo==="Assinatura") ? "out" : "trf"
   }">${l.tipo}</span>
   <span class="muted" style="font-weight:800">
-    ${l.categoria} • ${l.subcategoria}${invExtra}${l.data ? ` • ${fmtDate(l.data)}` : ""}
+    ${l.categoria} • ${l.subcategoria}${l.data ? ` • ${fmtDate(l.data)}` : ""}
   </span>
   <span style="margin-left:auto;font-weight:900">
     ${money(l.valor)}
@@ -1009,9 +543,7 @@ function renderLancList(list){
         <button class="btn small danger" onclick="deleteLancamento('${l.id}')">Excluir</button>
       </div>
     </div>
-  `;
-    })
-    .join("");
+  `).join("");
 }
 
 function computeSaldoAnterior(conta, month){
@@ -1107,7 +639,7 @@ function renderMes(){
       <div class="row big" style="margin-top:10px"><span>Total gastos</span><span>${money(totalDes)}</span></div>
 
       <h4 style="margin:10px 0 6px 0">Gastos por categoria (barra)</h4>
-      ${renderBars("", bars).replace("<h4", "<div style='display:none'><h4")}
+      ${renderBars("", bars)}
     </div>
   `;
 
@@ -1118,21 +650,19 @@ function renderMes(){
 }
 
 function getInvestSaldoAnterior(month){
-  const data = loadData();
-  data.lancamentos = Array.isArray(data.lancamentos) ? data.lancamentos : [];
+  const prev = prevMonth(month);
+  if(!prev) return 0;
 
-  // saldo acumulado de tudo que aconteceu ANTES do mês selecionado (YYYY-MM)
+  const data = StorageAPI.load();
   const list = data.lancamentos.filter(l =>
     l.conta === "Banco do Brasil" &&
     l.categoria === "Investimentos" &&
-    String(l.competencia||"") < String(month||"")
+    l.competencia === prev
   );
 
   let saldo = 0;
   list.forEach(l=>{
-    const mv = normalizeInvestMovValue(l);
-    const tipo = mv ? (["aplic","ajuste-"].includes(mv) ? "Despesa" : "Receita") : l.tipo;
-    if(tipo === "Despesa") saldo -= Number(l.valor||0);
+    if(l.tipo === "Despesa") saldo -= Number(l.valor||0);
     else saldo += Number(l.valor||0);
   });
 
@@ -1141,160 +671,61 @@ function getInvestSaldoAnterior(month){
 
 
 function renderInvestimentos(){
-  migrateInvestDataIfNeeded();
-
-  const data = loadData();
-  ensureInvestAssets(data);
-
+  const data = StorageAPI.load();
   const monthInput = document.getElementById("invest-month");
   const month = monthInput?.value || currentMonth;
-  if(monthInput && monthInput.value !== month) monthInput.value = month;
 
   // Filtra somente Investimentos do BB
-  const list = (data.lancamentos||[]).filter(l =>
+  const list = data.lancamentos.filter(l =>
     l.conta === "Banco do Brasil" &&
     l.categoria === "Investimentos" &&
     l.competencia === month
   );
 
-  // Totais por movimento (fluxo)
-  let totalAplic = 0, totalRend = 0, totalRetir = 0, totalAjPos = 0, totalAjNeg = 0;
-
-  list.forEach(l=>{
-    const mv = normalizeInvestMovValue(l);
-    const v = Number(l.valor||0);
-
-    if(mv === "aplic") totalAplic += v;
-    else if(mv === "rend") totalRend += v;
-    else if(mv === "retir") totalRetir += v;
-    else if(mv === "ajuste+") totalAjPos += v;
-    else if(mv === "ajuste-") totalAjNeg += v;
-    else{
-      // fallback legado
-      if(l.tipo === "Despesa") totalAplic += v;
-      else totalRend += v;
-    }
-  });
-
-  const totalSaidas = totalAplic + totalAjNeg;        // APLIC + AJUSTE-
-  const totalProventos = totalRend + totalAjPos;      // REND + AJUSTE+
-  const totalEntradas = totalProventos + totalRetir;  // (REND/AJUSTE+) + RETIR
-
-  const saldoAnterior = getInvestSaldoAnterior(month);
-  const saldoFinal = saldoAnterior - totalSaidas + totalEntradas;
-
-  // Proventos por ativo no ANO selecionado
-  const yearDefault = String(month||currentMonth).slice(0,4);
-  const yearSelEl = document.getElementById("invest-year");
-  const year = yearSelEl?.value || yearDefault;
-
-  const yearList = (data.lancamentos||[]).filter(l =>
-    l.conta === "Banco do Brasil" &&
-    l.categoria === "Investimentos" &&
-    String(l.competencia||"").startsWith(`${year}-`)
+  // Entradas e saídas (fluxo)
+  const entradas = list.filter(l =>
+    l.tipo === "Receita" || l.tipo === "Transferência"
   );
+  const saidas = list.filter(l => l.tipo === "Despesa");
 
-  const byAsset = {};
-  yearList.forEach(l=>{
-    const mv = normalizeInvestMovValue(l);
-    if(!["rend","ajuste+"].includes(mv)) return;
+  const totalEntradas = entradas.reduce((s,l)=>s+Number(l.valor||0),0);
+  const totalSaidas   = saidas.reduce((s,l)=>s+Number(l.valor||0),0);
 
-    const id = l.investAssetId || "";
-    if(!id) return;
+  // Saldo anterior (Invest)
+  const saldoAnterior = getInvestSaldoAnterior(month);
+  const saldoFinal = saldoAnterior + totalEntradas - totalSaidas;
 
-    byAsset[id] = (byAsset[id]||0) + Number(l.valor||0);
+  // Agrupar por subcategoria
+  const porSub = {};
+  list.forEach(l=>{
+    const sub = l.subcategoria || "Outros";
+    if(!porSub[sub]) porSub[sub] = 0;
+    if(l.tipo === "Despesa") porSub[sub] -= Number(l.valor||0);
+    else porSub[sub] += Number(l.valor||0);
   });
 
-  const rows = Object.entries(byAsset)
-    .map(([id,total])=>{
-      const a = findInvestAssetById(data, id);
-      const kind = a?.kind || "outros";
-      return { id, total, kind, label: investAssetLabel(data, id) };
-    })
-    .sort((a,b)=> b.total - a.total);
+  const bars = Object.entries(porSub)
+    .sort((a,b)=>Math.abs(b[1]) - Math.abs(a[1]));
 
-  const totalByKind = rows.reduce((acc,r)=>{
-    const k = r.kind || "outros";
-    acc[k] = (acc[k]||0) + r.total;
-    return acc;
-  }, {});
+  const el = document.getElementById("invest-view");
+  if(!el) return;
 
-  // HTML — Lançamentos do mês + Painel de proventos do ano (no fim)
-  const investView = document.getElementById("invest-view");
-  if(!investView) return;
+  el.innerHTML = `
+    <div class="row big"><span>Saldo anterior</span><span>${money(saldoAnterior)}</span></div>
+    <div class="row big"><span>Entradas</span><span>${money(totalEntradas)}</span></div>
+    <div class="row big"><span>Saídas</span><span>${money(totalSaidas)}</span></div>
+    <div class="row big"><span>Saldo final</span><span>${money(saldoFinal)}</span></div>
+    <hr/>
+    ${renderBars("Movimento por tipo", bars)}
+    <hr/>
+    <h4 style="margin:10px 0 6px 0">Lançamentos</h4>
+    ${list.length
+  ? renderLancList(
+      list.slice().sort((a,b)=>Number(b.id)-Number(a.id))
+    )
+  : `<div class="muted">Sem lançamentos de investimento neste mês.</div>`
+}
 
-  const movEntries = [
-    ["Proventos (REND)", totalProventos],
-    ["Resgates (RETIR)", totalRetir],
-    ["Aplicações (APLIC)", -totalSaidas],
-  ].filter(([,v])=>Math.abs(v) > 0);
-
-  // anos para o seletor
-  const y0 = Number(yearDefault)||new Date().getFullYear();
-  const years = [y0-2,y0-1,y0,y0+1].filter((v,i,a)=>a.indexOf(v)===i);
-
-  const kindSummary = [
-    ["FIIs", totalByKind.fii||0],
-    ["Ações", totalByKind.acao||0],
-    ["Poupança", totalByKind.poupanca||0],
-    ["Outros", totalByKind.outros||0],
-  ].filter(([,v])=>v>0);
-
-  investView.innerHTML = `
-    <div style="margin-top:14px">
-      <h4 style="margin:10px 0 6px 0">Resumo do mês</h4>
-      <div class="muted">Saldo anterior (acumulado): <b>${money(saldoAnterior)}</b></div>
-      <div class="muted">Saídas (APLIC + AJUSTE-): <b>${money(totalSaidas)}</b></div>
-      <div class="muted">Entradas (REND/AJUSTE+ + RETIR): <b>${money(totalEntradas)}</b></div>
-      <div class="muted" style="margin-top:6px">Saldo final (acumulado): <b>${money(saldoFinal)}</b></div>
-
-      ${renderBars("Fluxo no mês (Invest)", movEntries)}
-
-      <h4 style="margin:14px 0 6px 0">Lançamentos do mês</h4>
-      ${list.length ? renderLancList(list) : `<div class="muted">Sem lançamentos para este mês.</div>`}
-
-      <h4 style="margin:18px 0 6px 0">Proventos acumulados no ano (REND)</h4>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-        <div class="pill">Ano:</div>
-        <select id="invest-year" onchange="renderInvestimentos()" style="padding:10px;border-radius:12px;border:1px solid var(--border);background:#fff">
-          ${years.map(y=>`<option value="${y}" ${String(y)===String(year)?"selected":""}>${y}</option>`).join("")}
-        </select>
-        <div class="muted">Total: <b>${money(rows.reduce((s,r)=>s+r.total,0))}</b></div>
-      </div>
-
-      ${kindSummary.length ? renderBars("Por tipo (ano)", kindSummary.map(([k,v])=>[k, v])) : `<div class="muted">Sem proventos registrados neste ano.</div>`}
-
-      ${rows.length ? `
-        <div style="overflow:auto;border:1px solid var(--border);border-radius:12px">
-          <table style="width:100%;border-collapse:collapse;min-width:520px">
-            <thead>
-              <tr>
-                <th style="text-align:left;padding:10px;border-bottom:1px solid var(--border)">Ativo</th>
-                <th style="text-align:left;padding:10px;border-bottom:1px solid var(--border)">Tipo</th>
-                <th style="text-align:right;padding:10px;border-bottom:1px solid var(--border)">Proventos (${year})</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.map(r=>`
-                <tr>
-                  <td style="padding:10px;border-bottom:1px solid var(--border)">${r.label}</td>
-                  <td style="padding:10px;border-bottom:1px solid var(--border)">${investKindLabel(r.kind)}</td>
-                  <td style="padding:10px;border-bottom:1px solid var(--border);text-align:right;font-weight:800">${money(r.total)}</td>
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
-        </div>
-      ` : ``}
-
-      <h4 style="margin:18px 0 6px 0">Ativos (Invest)</h4>
-      <div class="muted">Dica: se você “remove” um ativo, o ideal é <b>desativar</b> (para não perder histórico). Excluir só se não houver lançamentos.</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
-        <button class="btn small" onclick="investAssetAddFromManager()">+ Adicionar ativo</button>
-      </div>
-
-      ${renderInvestAssetsManager()}
-    </div>
   `;
 }
 
@@ -1410,139 +841,22 @@ function shouldChargeSubscription(sub, month){
   return true; // mensal
 }
 
-function normLower(s){
-  return String(s||"").trim().toLowerCase();
-}
-
-function subChargeKey(subId, month){
-  return `sub:${subId}:${month}`;
-}
-
-function getSubNameSet(sub){
-  const names = new Set();
-  if(sub?.name) names.add(normLower(sub.name));
-  if(Array.isArray(sub?.aliases)){
-    for(const a of sub.aliases){
-      const n = normLower(a);
-      if(n) names.add(n);
-    }
-  }
-  return names;
-}
-
-function getSubValueSet(sub){
-  const vals = new Set();
-  if(isFinite(Number(sub?.valor))) vals.add(Number(sub.valor));
-  if(Array.isArray(sub?.valuesHistory)){
-    for(const v of sub.valuesHistory){
-      const n = Number(v);
-      if(isFinite(n)) vals.add(n);
-    }
-  }
-  return vals;
-}
-
-function upgradeSubscriptionChargeKeys(data){
-  let changed = false;
-  if(!Array.isArray(data.lancamentos)) data.lancamentos = [];
-  for(const l of data.lancamentos){
-    if(!l) continue;
-    if(l.conta !== "Cartão") continue;
-    if(l.tipo !== "Assinatura") continue;
-    if(!l.subscriptionId || !l.competencia) continue;
-
-    const key = subChargeKey(l.subscriptionId, l.competencia);
-    if(l.subscriptionKey !== key){
-      l.subscriptionKey = key;
-      changed = true;
-    }
-  }
-  return changed;
-}
-
-function linkLegacySubscriptionCharges(data, sub, month){
-  // Liga lançamentos antigos (sem subscriptionId) a um cadastro de assinatura,
-  // usando alias/histórico de valores para evitar duplicação no futuro.
-  let changed = false;
-  if(!Array.isArray(data.lancamentos)) data.lancamentos = [];
-
-  const key = subChargeKey(sub.id, month);
-  const names = getSubNameSet(sub);
-  const values = getSubValueSet(sub);
-
-  for(const l of data.lancamentos){
-    if(!l) continue;
-    if(l.conta !== "Cartão") continue;
-    if(l.tipo !== "Assinatura") continue;
-    if(l.competencia !== month) continue;
-    if(l.subscriptionId) continue;
-
-    const d = normLower(l.descricao);
-    const v = Number(l.valor);
-
-    if(names.has(d) && values.has(v)){
-      l.subscriptionId = sub.id;
-      l.subscriptionKey = key;
-      changed = true;
-    }
-  }
-  return changed;
-}
-
-function dedupeSubscriptionChargesForMonth(data, month){
-  // Remove duplicatas do MESMO cadastro no mesmo mês (somente meses abertos).
-  let changed = false;
-  if(!Array.isArray(data.lancamentos)) data.lancamentos = [];
-
-  const seen = new Set();
-  const out = [];
-
-  for(const l of data.lancamentos){
-    if(!l || l.conta !== "Cartão" || l.tipo !== "Assinatura" || l.competencia !== month){
-      out.push(l);
-      continue;
-    }
-
-    const key = l.subscriptionKey || (l.subscriptionId ? subChargeKey(l.subscriptionId, month) : null);
-
-    if(key){
-      if(seen.has(key)){
-        changed = true;
-        continue;
-      }
-      seen.add(key);
-
-      if(l.subscriptionId && !l.subscriptionKey){
-        l.subscriptionKey = key;
-        changed = true;
-      }
-    }
-
-    out.push(l);
-  }
-
-  if(changed) data.lancamentos = out;
-  return changed;
-}
-
 function subscriptionChargeExists(data, sub, month){
-  const key = subChargeKey(sub.id, month);
-  const names = getSubNameSet(sub);
-  const values = getSubValueSet(sub);
-
   return data.lancamentos.some(l =>
     l.conta === "Cartão" &&
+    l.tipo === "Assinatura" &&
     l.competencia === month &&
     (
-      l.subscriptionKey === key ||
-      (l.tipo === "Assinatura" && l.subscriptionId === sub.id) ||
-      (l.tipo === "Assinatura" && !l.subscriptionId && names.has(normLower(l.descricao)) && values.has(Number(l.valor)))
+      l.subscriptionId === sub.id ||
+      (!l.subscriptionId &&
+        String(l.descricao||"").trim().toLowerCase() === String(sub.name||"").trim().toLowerCase() &&
+        Number(l.valor||0) === Number(sub.valor||0)
+      )
     )
   );
 }
 
 function createSubscriptionCharge(data, sub, month){
-  const key = subChargeKey(sub.id, month);
   data.lancamentos.push({
     id: uid(),
     conta: "Cartão",
@@ -1554,34 +868,22 @@ function createSubscriptionCharge(data, sub, month){
     competencia: month,
     data: isoFromYMDay(month, sub.dueDay || 1),
     descricao: sub.name || "Assinatura",
-    subscriptionId: sub.id,
-    subscriptionKey: key
+    subscriptionId: sub.id
   });
 }
 
 function ensureSubscriptionsForMonth(month){
   const data = loadData();
-
-  // Se a fatura já está fechada, não mexe nos lançamentos.
+  // Se a fatura já está fechada, não lança assinaturas automaticamente.
   if(getCardClosingInfo(data, month)) return false;
-
   data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
 
   let changed = false;
-
-  // Migração leve: garante chaves em lançamentos já existentes (não altera valores)
-  if(upgradeSubscriptionChargeKeys(data)) changed = true;
-
-  // Remove duplicatas de assinaturas no mês (somente meses abertos)
-  if(dedupeSubscriptionChargesForMonth(data, month)) changed = true;
 
   for(const sub of data.subscriptions){
     if(!sub || !sub.id) continue;
     if(sub.active === false) continue;
     if(!shouldChargeSubscription(sub, month)) continue;
-
-    // Liga lançamentos legados (sem id) a este cadastro, usando alias/histórico
-    if(linkLegacySubscriptionCharges(data, sub, month)) changed = true;
 
     if(subscriptionChargeExists(data, sub, month)) continue;
 
@@ -1634,8 +936,6 @@ function addSubscription(){
     startMonth: String(startMonth).trim(),
     dueDay,
     active: true,
-    aliases: [name.trim()],
-    valuesHistory: [valor],
     categoria: "Cartão",
     subcategoria: "Assinaturas"
   });
@@ -1699,23 +999,6 @@ function editSubscription(id){
   const dueDayRaw = prompt("Dia de cobrança (1 a 31):", String(sub.dueDay || 1));
   if(dueDayRaw === null) return;
   const dueDay = Math.min(Math.max(1, Number(dueDayRaw||1)), 31);
-
-// guarda histórico para evitar duplicações em meses antigos (lançamentos legados sem id)
-sub.aliases = Array.isArray(sub.aliases) ? sub.aliases : [];
-sub.valuesHistory = Array.isArray(sub.valuesHistory) ? sub.valuesHistory : [];
-
-const oldName = String(sub.name || "").trim();
-const oldVal  = Number(sub.valor || 0);
-
-if(oldName){
-  const key = normLower(oldName);
-  if(key && !sub.aliases.some(a => normLower(a) === key)){
-    sub.aliases.push(oldName);
-  }
-}
-if(isFinite(oldVal) && !sub.valuesHistory.some(v => Number(v) === oldVal)){
-  sub.valuesHistory.push(oldVal);
-}
 
   sub.name = String(name).trim();
   sub.valor = valor;
@@ -1942,6 +1225,7 @@ function editLancamento(id){
     return;
   }
 
+
   const dtRaw = prompt("Data (AAAA-MM-DD ou DD/MM/AAAA):", l.data || "");
   const dt = normalizeDateInput(dtRaw);
   if(dt === null) return; // cancel
@@ -1951,74 +1235,26 @@ function editLancamento(id){
   const valor = Number(prompt("Valor:", String(l.valor)) ?? l.valor);
   if(!isFinite(valor) || valor<=0) return alert("Valor inválido.");
 
-  const desc = (prompt("Descrição:", l.descricao||"") ?? (l.descricao||"")).toString();
+  const desc = prompt("Descrição:", l.descricao||"") ?? (l.descricao||"");
 
-  const cats = getCats();
+    const cats = getCats();
 
-  const isInvest = (l.conta === "Banco do Brasil" && l.categoria === "Investimentos");
-
+  // trava conta/categoria quando for Investimentos
   let cat = l.categoria;
   let sub = l.subcategoria;
 
-  if(!isInvest){
+  if (l.categoria !== "Investimentos") {
     cat = prompt("Categoria:", l.categoria) ?? l.categoria;
-    if(!cats[cat]) return alert("Categoria não existe. Ajuste em 'Mais' > Gerenciar.");
+    if (!cats[cat]) return alert("Categoria não existe. Ajuste em 'Mais' > Gerenciar.");
+
     sub = prompt("Subcategoria:", l.subcategoria) ?? l.subcategoria;
-  }else{
-    ensureInvestAssets(data);
-
-    const mvNow = normalizeInvestMovValue(l) || "aplic";
-    const mvRaw = prompt("Movimento (Invest): aplic / rend / retir / ajuste+ / ajuste-:", mvNow);
-    if(mvRaw === null) return;
-
-    const mv = normalizeInvestMovValue({ investMov: (mvRaw||"").trim(), descricao: desc });
-    if(!["aplic","rend","retir","ajuste+","ajuste-"].includes(mv)){
-      alert("Movimento inválido.");
-      return;
-    }
-
-    l.investMov = mv;
-    l.tipo = (["aplic","ajuste-"].includes(mv)) ? "Despesa" : "Receita";
-
-    const currentAsset = findInvestAssetById(data, l.investAssetId);
-    const defaultCode = currentAsset ? String(currentAsset.code||"") : "";
-
-    const codeRaw = prompt("Ativo (ticker/código, ex: BCRO11 ou 81):", defaultCode);
-    if(codeRaw === null) return;
-    const code = (codeRaw||"").toString().trim().toUpperCase();
-
-    if(code){
-      let a = findInvestAssetByCode(data, code);
-
-      if(!a){
-        const ok = confirm("Ativo não cadastrado. Quer cadastrar agora?");
-        if(ok){
-          const kindRaw = prompt("Tipo do ativo (poupanca / fii / acao):", "fii");
-          if(kindRaw === null) return;
-          const kind = (kindRaw||"").toLowerCase().trim();
-          if(!["poupanca","fii","acao","outros"].includes(kind)){
-            alert("Tipo inválido.");
-            return;
-          }
-          const defaultName = kind === "poupanca" ? "" : code;
-          const nameRaw = prompt("Nome/Apelido (opcional):", defaultName);
-          if(nameRaw === null) return;
-          const name = (nameRaw||"").toString().trim() || defaultName || code;
-
-          a = { id: uid(), kind, code, name, active:true };
-          data.investAssets.push(a);
-        }
-      }
-
-      if(a){
-        a.active = true;
-        l.investAssetId = a.id;
-        sub = investKindLabel(a.kind);
-      }
-    }
-
-    cat = "Investimentos";
   }
+
+  l.valor = valor;
+  l.descricao = desc.trim();
+  l.categoria = cat;
+  l.subcategoria = sub;
+
 
   l.valor = valor;
   l.descricao = desc.trim();
@@ -2057,27 +1293,18 @@ function exportExcel(){
   }
   const data = loadData();
   const month = currentMonth || ymNow();
-
-  const rows = (data.lancamentos||[])
+  const rows = data.lancamentos
     .filter(l=>l.competencia===month)
-    .map(l=>{
-      const isInv = (l.conta === "Banco do Brasil" && l.categoria === "Investimentos");
-      const mv = isInv ? normalizeInvestMovValue(l) : "";
-      const ativo = isInv ? investAssetLabel(data, l.investAssetId) : "";
-
-      return {
-        conta: l.conta,
-        tipo: l.tipo,
-        categoria: l.categoria,
-        subcategoria: l.subcategoria,
-        valor: l.valor,
-        competencia: l.competencia,
-        data: l.data || "",
-        descricao: l.descricao || "",
-        investMov: mv,
-        investAtivo: ativo
-      };
-    });
+    .map(l=>({
+      conta:l.conta,
+      tipo:l.tipo,
+      categoria:l.categoria,
+      subcategoria:l.subcategoria,
+      valor:l.valor,
+      competencia:l.competencia,
+      data:l.data||"",
+      descricao:l.descricao||""
+    }));
 
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
@@ -2146,65 +1373,3 @@ function openCats(){
   updateLaunchUI();
   renderCatsPreview();
 })();
-
-// =========================
-// PWA: Botão "Atualizar app"
-// =========================
-window.checkForUpdate = async function checkForUpdate() {
-  const statusEl = document.getElementById("pwa-update-status");
-  const setStatus = (t) => { if (statusEl) statusEl.textContent = t; };
-
-  if (!("serviceWorker" in navigator)) {
-    setStatus("Este navegador não suporta atualização via Service Worker.");
-    return;
-  }
-
-  setStatus("Verificando atualização…");
-
-  let reg;
-  try {
-    // garante que o SW já está pronto/controlando
-    reg = await navigator.serviceWorker.ready;
-  } catch (e) {
-    setStatus("Service Worker não está ativo ainda. Reabra o app e tente de novo.");
-    return;
-  }
-
-  // força checagem no servidor
-  try { await reg.update(); } catch {}
-
-  const applyUpdate = () => {
-    const waiting = reg.waiting;
-    if (!waiting) { setStatus("Sem atualização disponível."); return; }
-
-    const ok = confirm("Nova versão disponível. Atualizar agora?");
-    if (!ok) { setStatus("Atualização disponível (não aplicada)."); return; }
-
-    setStatus("Aplicando atualização…");
-
-    let reloaded = false;
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (reloaded) return;
-      reloaded = true;
-      location.reload();
-    });
-
-    // pede pro SW “assumir” sem esperar fechar todas as abas
-    waiting.postMessage({ type: "SKIP_WAITING" });
-  };
-
-  // Se já tem uma versão nova “esperando”, aplica
-  if (reg.waiting) return applyUpdate();
-
-  // Se está instalando agora, espera terminar
-  if (reg.installing) {
-    reg.installing.addEventListener("statechange", () => {
-      if (reg.installing.state === "installed") applyUpdate();
-    });
-    return;
-  }
-
-  // Caso comum: não achou nada novo
-  setStatus("Sem atualização (já está em dia).");
-};
-
