@@ -1,93 +1,52 @@
-/* Financeiro PWA Service Worker */
-const CACHE_NAME = "financeiro-pwa-v1";
-const PRECACHE_URLS = [
+/* sw.js — Orçamento (PWA)
+   Cache name bump forces update (incl. new app.js) */
+const CACHE_NAME = "orcamento-cache-v3"; // <-- aumente vN quando publicar mudanças
+
+const ASSETS = [
   "./",
   "./index.html",
   "./app.js",
-  "./storage.js",
   "./manifest.json",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png",
+  "./icon-192.png",
+  "./icon-512.png"
 ];
 
-// Instala e pré-carrega
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
   );
   self.skipWaiting();
 });
 
-// Ativa e limpa caches antigos
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)))
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
 });
 
-self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "SKIP_WAITING") {
-    self.skipWaiting();
-  }
-});
-
-self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
-});
-
-
-// Estratégia:
-// - Navegação: network-first (com fallback do cache)
-// - Arquivos: cache-first (com update em background)
+// Stale-while-revalidate: serve cache fast, update in background
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-
-  // Só lida com GET
   if (req.method !== "GET") return;
 
-  // Navegação (abrir a "página")
-  if (req.mode === "navigate") {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          // atualiza cache do index
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put("./index.html", copy));
-          return res;
-        })
-        .catch(() => caches.match("./index.html"))
-    );
-    return;
-  }
-
-  // Demais assets
   event.respondWith(
     caches.match(req).then((cached) => {
-      if (cached) {
-        // atualiza em background
-        event.waitUntil(
-          fetch(req)
-            .then((res) => {
-              if (res && res.ok) {
-                const copy = res.clone();
-                return caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
-              }
-            })
-            .catch(() => {})
-        );
-        return cached;
-      }
+      const fetchPromise = fetch(req)
+        .then((res) => {
+          // cache same-origin only
+          const url = new URL(req.url);
+          if (url.origin === self.location.origin) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => cached); // offline fallback
 
-      return fetch(req).then((res) => {
-        if (res && res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
-        }
-        return res;
-      });
+      return cached || fetchPromise;
     })
   );
 });
