@@ -1,38 +1,31 @@
-const STORAGE_KEY = "financeiro_v2";
+// storage.js
+(() => {
+  const KEY = "financeiro_v1";
 
-const DEFAULT_CATS = {
-  "Renda": ["Saldo anterior", "Salário", "13º", "Férias", "Outros"],
-  "Habitação": ["Condomínio", "Prestação", "Luz", "Gás", "Internet", "Outros"],
-  "Saúde": ["Plano", "Farmácia", "Consultas", "Exames", "Outros"],
-  "Alimentação": ["Mercado", "Restaurante", "Cafeteria", "Outros"],
-  "Transporte": ["Uber", "Táxi", "Ônibus", "Metrô", "Outros"],
-  "Cursos": ["Curso principal", "Outros"],
-  "Pessoal": ["Vestuário", "Salão", "Outros"],
-  "Lazer": ["Viagem", "Livros", "Passeios", "Outros"],
-  "Cartão": ["Assinaturas", "Compras"],
-  "Outros gastos": ["Diversos"],
-  "Investimentos": ["Ações", "FII", "Poupança", "Previdência"]
-};
+  function safeParse(json, fallback) {
+    try { return JSON.parse(json); } catch { return fallback; }
+  }
 
-function loadData() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  const base = {
-    lancamentos: [],
-    subscriptions: [],
-    categories: DEFAULT_CATS
-  };
+  function defaultData() {
+    return {
+      lancamentos: [],
+      categories: {}
+    };
+  }
 
-  if (!raw) return base;
+  function load() {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return defaultData();
+    const data = safeParse(raw, defaultData());
+    if (!data || typeof data !== "object") return defaultData();
+    if (!Array.isArray(data.lancamentos)) data.lancamentos = [];
+    if (!data.categories || typeof data.categories !== "object") data.categories = {};
+    return data;
+  }
 
-  const data = JSON.parse(raw);
+  function save(data) {
+    localStorage.setItem(KEY, JSON.stringify(data || defaultData()));
+  }
 
-  if (!Array.isArray(data.lancamentos)) data.lancamentos = [];
-  if (!Array.isArray(data.subscriptions)) data.subscriptions = [];
-  if (!data.categories || typeof data.categories !== "object") data.categories = DEFAULT_CATS;
-
-  return { ...base, ...data };
-}
-
-function saveData(data) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
+  window.StorageAPI = { load, save };
+})();
