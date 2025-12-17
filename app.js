@@ -490,7 +490,7 @@ function renderBars(title, entries){
   const max = Math.max(...entries.map(([,v])=>Math.abs(v)), 1);
 
   return `
-    ${title ? `<h4 style="margin:10px 0 6px 0">${title}</h4>` : ``}
+    <h4 style="margin:10px 0 6px 0">${title}</h4>
     <div class="bars">
       ${entries.map(([label,val])=>{
         const pct = Math.round((Math.abs(val) / max) * 50);
@@ -638,8 +638,7 @@ function renderMes(){
 
       <div class="row big" style="margin-top:10px"><span>Total gastos</span><span>${money(totalDes)}</span></div>
 
-      <h4 style="margin:10px 0 6px 0">Gastos por categoria (barra)</h4>
-      ${renderBars("", bars)}
+      ${renderBars("Gastos por categoria (barra)", bars)}
     </div>
   `;
 
@@ -841,22 +840,139 @@ function shouldChargeSubscription(sub, month){
   return true; // mensal
 }
 
+function normLower(s){
+  return String(s||"").trim().toLowerCase();
+}
+
+function subChargeKey(subId, month){
+  return `sub:${subId}:${month}`;
+}
+
+function getSubNameSet(sub){
+  const names = new Set();
+  if(sub?.name) names.add(normLower(sub.name));
+  if(Array.isArray(sub?.aliases)){
+    for(const a of sub.aliases){
+      const n = normLower(a);
+      if(n) names.add(n);
+    }
+  }
+  return names;
+}
+
+function getSubValueSet(sub){
+  const vals = new Set();
+  if(isFinite(Number(sub?.valor))) vals.add(Number(sub.valor));
+  if(Array.isArray(sub?.valuesHistory)){
+    for(const v of sub.valuesHistory){
+      const n = Number(v);
+      if(isFinite(n)) vals.add(n);
+    }
+  }
+  return vals;
+}
+
+function upgradeSubscriptionChargeKeys(data){
+  let changed = false;
+  if(!Array.isArray(data.lancamentos)) data.lancamentos = [];
+  for(const l of data.lancamentos){
+    if(!l) continue;
+    if(l.conta !== "Cartão") continue;
+    if(l.tipo !== "Assinatura") continue;
+    if(!l.subscriptionId || !l.competencia) continue;
+
+    const key = subChargeKey(l.subscriptionId, l.competencia);
+    if(l.subscriptionKey !== key){
+      l.subscriptionKey = key;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function linkLegacySubscriptionCharges(data, sub, month){
+  // Liga lançamentos antigos (sem subscriptionId) a um cadastro de assinatura,
+  // usando alias/histórico de valores para evitar duplicação no futuro.
+  let changed = false;
+  if(!Array.isArray(data.lancamentos)) data.lancamentos = [];
+
+  const key = subChargeKey(sub.id, month);
+  const names = getSubNameSet(sub);
+  const values = getSubValueSet(sub);
+
+  for(const l of data.lancamentos){
+    if(!l) continue;
+    if(l.conta !== "Cartão") continue;
+    if(l.tipo !== "Assinatura") continue;
+    if(l.competencia !== month) continue;
+    if(l.subscriptionId) continue;
+
+    const d = normLower(l.descricao);
+    const v = Number(l.valor);
+
+    if(names.has(d) && values.has(v)){
+      l.subscriptionId = sub.id;
+      l.subscriptionKey = key;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function dedupeSubscriptionChargesForMonth(data, month){
+  // Remove duplicatas do MESMO cadastro no mesmo mês (somente meses abertos).
+  let changed = false;
+  if(!Array.isArray(data.lancamentos)) data.lancamentos = [];
+
+  const seen = new Set();
+  const out = [];
+
+  for(const l of data.lancamentos){
+    if(!l || l.conta !== "Cartão" || l.tipo !== "Assinatura" || l.competencia !== month){
+      out.push(l);
+      continue;
+    }
+
+    const key = l.subscriptionKey || (l.subscriptionId ? subChargeKey(l.subscriptionId, month) : null);
+
+    if(key){
+      if(seen.has(key)){
+        changed = true;
+        continue;
+      }
+      seen.add(key);
+
+      if(l.subscriptionId && !l.subscriptionKey){
+        l.subscriptionKey = key;
+        changed = true;
+      }
+    }
+
+    out.push(l);
+  }
+
+  if(changed) data.lancamentos = out;
+  return changed;
+}
+
 function subscriptionChargeExists(data, sub, month){
+  const key = subChargeKey(sub.id, month);
+  const names = getSubNameSet(sub);
+  const values = getSubValueSet(sub);
+
   return data.lancamentos.some(l =>
     l.conta === "Cartão" &&
-    l.tipo === "Assinatura" &&
     l.competencia === month &&
     (
-      l.subscriptionId === sub.id ||
-      (!l.subscriptionId &&
-        String(l.descricao||"").trim().toLowerCase() === String(sub.name||"").trim().toLowerCase() &&
-        Number(l.valor||0) === Number(sub.valor||0)
-      )
+      l.subscriptionKey === key ||
+      (l.tipo === "Assinatura" && l.subscriptionId === sub.id) ||
+      (l.tipo === "Assinatura" && !l.subscriptionId && names.has(normLower(l.descricao)) && values.has(Number(l.valor)))
     )
   );
 }
 
 function createSubscriptionCharge(data, sub, month){
+  const key = subChargeKey(sub.id, month);
   data.lancamentos.push({
     id: uid(),
     conta: "Cartão",
@@ -868,22 +984,34 @@ function createSubscriptionCharge(data, sub, month){
     competencia: month,
     data: isoFromYMDay(month, sub.dueDay || 1),
     descricao: sub.name || "Assinatura",
-    subscriptionId: sub.id
+    subscriptionId: sub.id,
+    subscriptionKey: key
   });
 }
 
 function ensureSubscriptionsForMonth(month){
   const data = loadData();
-  // Se a fatura já está fechada, não lança assinaturas automaticamente.
+
+  // Se a fatura já está fechada, não mexe nos lançamentos.
   if(getCardClosingInfo(data, month)) return false;
+
   data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
 
   let changed = false;
+
+  // Migração leve: garante chaves em lançamentos já existentes (não altera valores)
+  if(upgradeSubscriptionChargeKeys(data)) changed = true;
+
+  // Remove duplicatas de assinaturas no mês (somente meses abertos)
+  if(dedupeSubscriptionChargesForMonth(data, month)) changed = true;
 
   for(const sub of data.subscriptions){
     if(!sub || !sub.id) continue;
     if(sub.active === false) continue;
     if(!shouldChargeSubscription(sub, month)) continue;
+
+    // Liga lançamentos legados (sem id) a este cadastro, usando alias/histórico
+    if(linkLegacySubscriptionCharges(data, sub, month)) changed = true;
 
     if(subscriptionChargeExists(data, sub, month)) continue;
 
@@ -936,6 +1064,8 @@ function addSubscription(){
     startMonth: String(startMonth).trim(),
     dueDay,
     active: true,
+    aliases: [name.trim()],
+    valuesHistory: [valor],
     categoria: "Cartão",
     subcategoria: "Assinaturas"
   });
@@ -999,6 +1129,23 @@ function editSubscription(id){
   const dueDayRaw = prompt("Dia de cobrança (1 a 31):", String(sub.dueDay || 1));
   if(dueDayRaw === null) return;
   const dueDay = Math.min(Math.max(1, Number(dueDayRaw||1)), 31);
+
+// guarda histórico para evitar duplicações em meses antigos (lançamentos legados sem id)
+sub.aliases = Array.isArray(sub.aliases) ? sub.aliases : [];
+sub.valuesHistory = Array.isArray(sub.valuesHistory) ? sub.valuesHistory : [];
+
+const oldName = String(sub.name || "").trim();
+const oldVal  = Number(sub.valor || 0);
+
+if(oldName){
+  const key = normLower(oldName);
+  if(key && !sub.aliases.some(a => normLower(a) === key)){
+    sub.aliases.push(oldName);
+  }
+}
+if(isFinite(oldVal) && !sub.valuesHistory.some(v => Number(v) === oldVal)){
+  sub.valuesHistory.push(oldVal);
+}
 
   sub.name = String(name).trim();
   sub.valor = valor;
