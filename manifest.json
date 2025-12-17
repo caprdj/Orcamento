@@ -1,8 +1,8 @@
 {
   "name": "Financeiro",
-  "short_name": "Financeiro",
-  "start_url": "./",
-  "scope": "./",
+  "short_name": "Orçamento",
+  "start_url": "/Orcamento/",
+  "scope": "/Orcamento/",
   "display": "standalone",
   "background_color": "#f5f5fa",
   "theme_color": "#4b7bec",
