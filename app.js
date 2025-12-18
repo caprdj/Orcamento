@@ -74,6 +74,45 @@ function nextMonth(ym){
   return `${yy}-${mm}`;
 }
 
+
+/* =========================
+   INVEST — helpers (proventos / tipo de ativo)
+========================= */
+
+function inferInvestMov(l){
+  // investMov salva a intenção explícita do lançamento
+  if(l && typeof l.investMov === "string" && l.investMov.trim()){
+    const mv = l.investMov.trim();
+    // compatibilidade com versões antigas
+    if(mv === "saida") return "aplic";
+    if(mv === "entrada"){
+      const desc = String(l?.descricao||"").toLowerCase();
+      if(/resgat|retir|saque|venda|liquid|retorno/.test(desc)) return "retir";
+      return "rend";
+    }
+    return mv;
+  }
+  // Legado: tenta inferir pelo tipo/descrição
+  if(l && l.tipo === "Despesa") return "aplic";
+  const desc = String(l?.descricao||"").toLowerCase();
+  if(/resgat|retir|saque|venda|liquid|retorno/.test(desc)) return "retir";
+  return "rend";
+}
+
+function classifyInvestAsset(assetName){
+  const a = String(assetName||"").trim().toUpperCase();
+  if(!a) return "Outros";
+
+  // Poupanças / metas (ex.: "81-Viagem", "Reforma", "Carro", "IPTU")
+  if(/VIAGEM|REFORMA|CARRO|IPTU|POUP|POUPAN/.test(a) || /^\d{1,3}-/.test(a)) return "Poupança";
+
+  // FIIs no Brasil normalmente terminam em 11 (BCRO11 etc)
+  if(/11$/.test(a)) return "FII";
+
+  // Demais: ações (NTCO3, BBAS3F, etc)
+  return "Ação";
+}
+
 /* =========================
    CARTÃO — FECHAMENTO DE FATURA
 ========================= */
@@ -270,9 +309,9 @@ function updateLaunchUI(){
   if(tipoSel){
     if(isInvest){
       tipoSel.disabled = true;
-      const mv = mov?.value || "saida";
-      if(mv === "entrada" || mv === "ajuste+") tipoSel.value = "Receita";
-      else if(mv === "saida" || mv === "ajuste-") tipoSel.value = "Despesa";
+      const mv = mov?.value || "aplic";
+      if(mv === "rend" || mv === "retir" || mv === "ajuste+") tipoSel.value = "Receita";
+      else if(mv === "aplic" || mv === "ajuste-") tipoSel.value = "Despesa";
     }else{
       tipoSel.disabled = false;
     }
@@ -346,8 +385,9 @@ function salvarLancamento(){
   let finalTipo = tipo;
 
   if(conta === "Banco do Brasil" && categoria === "Investimentos"){
-    investMov = document.getElementById("invest-mov")?.value || "saida";
-    if(investMov === "entrada" || investMov === "ajuste+") finalTipo = "Receita";
+    investMov = document.getElementById("invest-mov")?.value || "aplic";
+    // aplic = saída; rend/retir = entrada; ajuste+/- para correções
+    if(investMov === "rend" || investMov === "retir" || investMov === "ajuste+") finalTipo = "Receita";
     else finalTipo = "Despesa";
   }
 
@@ -426,6 +466,7 @@ function salvarLancamento(){
 
 let currentMonth = ymNow();
 let currentBank = "Bradesco";
+let investYearPref = null; // usado no Invest: "Rendimentos no ano"
 
 function initMesUI(){
   const monthEl = document.getElementById("month");
@@ -638,7 +679,8 @@ function renderMes(){
 
       <div class="row big" style="margin-top:10px"><span>Total gastos</span><span>${money(totalDes)}</span></div>
 
-      ${renderBars("Gastos por categoria (barra)", bars)}
+      <h4 style="margin:10px 0 6px 0">Gastos por categoria (barra)</h4>
+      ${renderBars("", bars).replace("<h4", "<div style='display:none'><h4")}
     </div>
   `;
 
@@ -706,6 +748,46 @@ function renderInvestimentos(){
   const bars = Object.entries(porSub)
     .sort((a,b)=>Math.abs(b[1]) - Math.abs(a[1]));
 
+  // ===== Rendimentos por ativo (ano) =====
+  const allInv = data.lancamentos.filter(l =>
+    l.conta === "Banco do Brasil" && l.categoria === "Investimentos"
+  );
+  const yearsSet = new Set();
+  allInv.forEach(l=>{
+    const y = String(l.competencia||"").slice(0,4);
+    if(/^\d{4}$/.test(y)) yearsSet.add(y);
+  });
+  const years = Array.from(yearsSet).sort((a,b)=>Number(b)-Number(a));
+  let selectedYear = investYearPref && years.includes(investYearPref) ? investYearPref : String(month).slice(0,4);
+  if(!years.includes(selectedYear) && years.length) selectedYear = years[0];
+  const yearOptions = (years.length ? years : [selectedYear]).map(y=>
+    `<option value="${y}" ${y===selectedYear?"selected":""}>${y}</option>`
+  ).join("");
+
+  const invYear = allInv.filter(l => String(l.competencia||"").startsWith(selectedYear));
+  const rendByAsset = {};
+  invYear.forEach(l=>{
+    const mov = inferInvestMov(l);
+    if(mov !== "rend") return;
+    const asset = (l.subcategoria || "Outros").trim() || "Outros";
+    rendByAsset[asset] = (rendByAsset[asset]||0) + Number(l.valor||0);
+  });
+  const rendEntries = Object.entries(rendByAsset)
+    .filter(([,v])=>Number(v) !== 0)
+    .sort((a,b)=>Number(b[1]) - Number(a[1]));
+
+  const totalsByType = { "Poupança":0, "FII":0, "Ação":0, "Outros":0 };
+  rendEntries.forEach(([asset,val])=>{
+    const t = classifyInvestAsset(asset);
+    totalsByType[t] = (totalsByType[t]||0) + Number(val||0);
+  });
+  const totalRendAno = Object.values(totalsByType).reduce((s,v)=>s+Number(v||0),0);
+  const tagsRendAno = Object.entries(totalsByType)
+    .filter(([,v])=>Math.abs(Number(v||0)) > 0.00001)
+    .map(([t,v])=>`<span class="tag tipo">${t}: ${money(v)}</span>`)
+    .join("");
+
+
   const el = document.getElementById("invest-view");
   if(!el) return;
 
@@ -726,6 +808,15 @@ function renderInvestimentos(){
 }
 
   `;
+
+  const yearSel = document.getElementById("invest-year");
+  if(yearSel){
+    yearSel.addEventListener("change", ()=>{
+      investYearPref = yearSel.value;
+      renderInvestimentos();
+    });
+  }
+
 }
 
 
@@ -840,139 +931,22 @@ function shouldChargeSubscription(sub, month){
   return true; // mensal
 }
 
-function normLower(s){
-  return String(s||"").trim().toLowerCase();
-}
-
-function subChargeKey(subId, month){
-  return `sub:${subId}:${month}`;
-}
-
-function getSubNameSet(sub){
-  const names = new Set();
-  if(sub?.name) names.add(normLower(sub.name));
-  if(Array.isArray(sub?.aliases)){
-    for(const a of sub.aliases){
-      const n = normLower(a);
-      if(n) names.add(n);
-    }
-  }
-  return names;
-}
-
-function getSubValueSet(sub){
-  const vals = new Set();
-  if(isFinite(Number(sub?.valor))) vals.add(Number(sub.valor));
-  if(Array.isArray(sub?.valuesHistory)){
-    for(const v of sub.valuesHistory){
-      const n = Number(v);
-      if(isFinite(n)) vals.add(n);
-    }
-  }
-  return vals;
-}
-
-function upgradeSubscriptionChargeKeys(data){
-  let changed = false;
-  if(!Array.isArray(data.lancamentos)) data.lancamentos = [];
-  for(const l of data.lancamentos){
-    if(!l) continue;
-    if(l.conta !== "Cartão") continue;
-    if(l.tipo !== "Assinatura") continue;
-    if(!l.subscriptionId || !l.competencia) continue;
-
-    const key = subChargeKey(l.subscriptionId, l.competencia);
-    if(l.subscriptionKey !== key){
-      l.subscriptionKey = key;
-      changed = true;
-    }
-  }
-  return changed;
-}
-
-function linkLegacySubscriptionCharges(data, sub, month){
-  // Liga lançamentos antigos (sem subscriptionId) a um cadastro de assinatura,
-  // usando alias/histórico de valores para evitar duplicação no futuro.
-  let changed = false;
-  if(!Array.isArray(data.lancamentos)) data.lancamentos = [];
-
-  const key = subChargeKey(sub.id, month);
-  const names = getSubNameSet(sub);
-  const values = getSubValueSet(sub);
-
-  for(const l of data.lancamentos){
-    if(!l) continue;
-    if(l.conta !== "Cartão") continue;
-    if(l.tipo !== "Assinatura") continue;
-    if(l.competencia !== month) continue;
-    if(l.subscriptionId) continue;
-
-    const d = normLower(l.descricao);
-    const v = Number(l.valor);
-
-    if(names.has(d) && values.has(v)){
-      l.subscriptionId = sub.id;
-      l.subscriptionKey = key;
-      changed = true;
-    }
-  }
-  return changed;
-}
-
-function dedupeSubscriptionChargesForMonth(data, month){
-  // Remove duplicatas do MESMO cadastro no mesmo mês (somente meses abertos).
-  let changed = false;
-  if(!Array.isArray(data.lancamentos)) data.lancamentos = [];
-
-  const seen = new Set();
-  const out = [];
-
-  for(const l of data.lancamentos){
-    if(!l || l.conta !== "Cartão" || l.tipo !== "Assinatura" || l.competencia !== month){
-      out.push(l);
-      continue;
-    }
-
-    const key = l.subscriptionKey || (l.subscriptionId ? subChargeKey(l.subscriptionId, month) : null);
-
-    if(key){
-      if(seen.has(key)){
-        changed = true;
-        continue;
-      }
-      seen.add(key);
-
-      if(l.subscriptionId && !l.subscriptionKey){
-        l.subscriptionKey = key;
-        changed = true;
-      }
-    }
-
-    out.push(l);
-  }
-
-  if(changed) data.lancamentos = out;
-  return changed;
-}
-
 function subscriptionChargeExists(data, sub, month){
-  const key = subChargeKey(sub.id, month);
-  const names = getSubNameSet(sub);
-  const values = getSubValueSet(sub);
-
   return data.lancamentos.some(l =>
     l.conta === "Cartão" &&
+    l.tipo === "Assinatura" &&
     l.competencia === month &&
     (
-      l.subscriptionKey === key ||
-      (l.tipo === "Assinatura" && l.subscriptionId === sub.id) ||
-      (l.tipo === "Assinatura" && !l.subscriptionId && names.has(normLower(l.descricao)) && values.has(Number(l.valor)))
+      l.subscriptionId === sub.id ||
+      (!l.subscriptionId &&
+        String(l.descricao||"").trim().toLowerCase() === String(sub.name||"").trim().toLowerCase() &&
+        Number(l.valor||0) === Number(sub.valor||0)
+      )
     )
   );
 }
 
 function createSubscriptionCharge(data, sub, month){
-  const key = subChargeKey(sub.id, month);
   data.lancamentos.push({
     id: uid(),
     conta: "Cartão",
@@ -984,34 +958,22 @@ function createSubscriptionCharge(data, sub, month){
     competencia: month,
     data: isoFromYMDay(month, sub.dueDay || 1),
     descricao: sub.name || "Assinatura",
-    subscriptionId: sub.id,
-    subscriptionKey: key
+    subscriptionId: sub.id
   });
 }
 
 function ensureSubscriptionsForMonth(month){
   const data = loadData();
-
-  // Se a fatura já está fechada, não mexe nos lançamentos.
+  // Se a fatura já está fechada, não lança assinaturas automaticamente.
   if(getCardClosingInfo(data, month)) return false;
-
   data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
 
   let changed = false;
-
-  // Migração leve: garante chaves em lançamentos já existentes (não altera valores)
-  if(upgradeSubscriptionChargeKeys(data)) changed = true;
-
-  // Remove duplicatas de assinaturas no mês (somente meses abertos)
-  if(dedupeSubscriptionChargesForMonth(data, month)) changed = true;
 
   for(const sub of data.subscriptions){
     if(!sub || !sub.id) continue;
     if(sub.active === false) continue;
     if(!shouldChargeSubscription(sub, month)) continue;
-
-    // Liga lançamentos legados (sem id) a este cadastro, usando alias/histórico
-    if(linkLegacySubscriptionCharges(data, sub, month)) changed = true;
 
     if(subscriptionChargeExists(data, sub, month)) continue;
 
@@ -1064,8 +1026,6 @@ function addSubscription(){
     startMonth: String(startMonth).trim(),
     dueDay,
     active: true,
-    aliases: [name.trim()],
-    valuesHistory: [valor],
     categoria: "Cartão",
     subcategoria: "Assinaturas"
   });
@@ -1129,23 +1089,6 @@ function editSubscription(id){
   const dueDayRaw = prompt("Dia de cobrança (1 a 31):", String(sub.dueDay || 1));
   if(dueDayRaw === null) return;
   const dueDay = Math.min(Math.max(1, Number(dueDayRaw||1)), 31);
-
-// guarda histórico para evitar duplicações em meses antigos (lançamentos legados sem id)
-sub.aliases = Array.isArray(sub.aliases) ? sub.aliases : [];
-sub.valuesHistory = Array.isArray(sub.valuesHistory) ? sub.valuesHistory : [];
-
-const oldName = String(sub.name || "").trim();
-const oldVal  = Number(sub.valor || 0);
-
-if(oldName){
-  const key = normLower(oldName);
-  if(key && !sub.aliases.some(a => normLower(a) === key)){
-    sub.aliases.push(oldName);
-  }
-}
-if(isFinite(oldVal) && !sub.valuesHistory.some(v => Number(v) === oldVal)){
-  sub.valuesHistory.push(oldVal);
-}
 
   sub.name = String(name).trim();
   sub.valor = valor;
@@ -1401,6 +1344,27 @@ function editLancamento(id){
   l.descricao = desc.trim();
   l.categoria = cat;
   l.subcategoria = sub;
+
+  // Se for investimento (BB + categoria Investimentos), permite ajustar o "Movimento"
+  if(l.conta === "Banco do Brasil" && l.categoria === "Investimentos"){
+    const currentMov = inferInvestMov(l);
+    const mvInput = prompt(
+      'Movimento (aplic=r$ sai, rend=provento, retir=resgate/venda, ajuste+/ajuste-):',
+      currentMov
+    );
+    if(mvInput !== null && String(mvInput).trim() !== ""){
+      let mv = String(mvInput).trim().toLowerCase();
+      if(mv === "entrada") mv = "rend";
+      if(mv === "saida") mv = "aplic";
+      // aceita apenas valores conhecidos; senão mantém o atual
+      if(["aplic","rend","retir","ajuste+","ajuste-"].includes(mv)){
+        l.investMov = mv;
+      }
+    }
+    // Mantém o tipo coerente com o movimento
+    const mvFinal = inferInvestMov(l);
+    l.tipo = (mvFinal === "aplic" || mvFinal === "ajuste-") ? "Despesa" : "Receita";
+  }
 
 
   l.valor = valor;

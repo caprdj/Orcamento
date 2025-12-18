@@ -335,12 +335,13 @@ input:disabled,select:disabled{opacity:.75}
         <div id="invest-move-wrap" style="display:none">
           <label>Movimento (Invest)</label>
           <select id="invest-mov">
-            <option value="saida">Aplicação/Compra (saída)</option>
-            <option value="entrada">Provento/Resgate (entrada)</option>
+            <option value="aplic">Aplicação/Compra (saída)</option>
+            <option value="rend">Provento/Dividendo (entrada)</option>
+            <option value="retir">Resgate/Venda (entrada)</option>
             <option value="ajuste+">Ajuste (+)</option>
             <option value="ajuste-">Ajuste (-)</option>
           </select>
-          <div class="hint">Para investimentos em modo fluxo: escolha se este lançamento entra ou sai.</div>
+          <div class="hint">Use: Aplicação/Compra = sai da conta; Provento/Dividendo = entra (rendimentos); Resgate/Venda = entra (retorno de capital); Ajuste +/- = correção.</div>
         </div>
 
         <label>Valor</label>
@@ -480,8 +481,6 @@ input:disabled,select:disabled{opacity:.75}
         <button class="btn" onclick="exportExcel()">📤 Exportar Excel (mês)</button>
         <div class="hint">Se não baixar, provavelmente é cache antigo do GitHub Pages.</div>
       </div>
-<button class="btn" id="btnPwaUpdate" type="button" onclick="checkForUpdate()">🔄 Atualizar app</button>
-<div id="pwa-update-status" class="hint"></div>
 
       <div class="card">
         <h3 style="margin:0 0 8px 0">Categorias & Subcategorias</h3>
@@ -520,16 +519,6 @@ input:disabled,select:disabled{opacity:.75}
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="storage.js"></script>
   <script src="app.js"></script>
-
-
-  <script>
-  // PWA (instala como app + offline)
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js");
-    });
-  }
-  </script>
 
 <script>
 /* =========================
