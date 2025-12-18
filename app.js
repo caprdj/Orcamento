@@ -19,6 +19,101 @@ function todayISO(){
   return new Date().toISOString().slice(0,10);
 }
 
+/* =========================
+   INVEST HELPERS
+========================= */
+function escapeHTML(str){
+  return String(str ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+function normInvestMovValue(l){
+  const mvRaw = String(l.investMov||"").trim().toLowerCase();
+  const desc = String(l.descricao||"").toLowerCase();
+
+  // novos valores
+  if(mvRaw === "aplic") return "aplic";
+  if(mvRaw === "rend") return "rend";
+  if(mvRaw === "retir") return "retir";
+  if(mvRaw === "ajuste+") return "ajuste+";
+  if(mvRaw === "ajuste-") return "ajuste-";
+
+  // compat: antigos
+  if(mvRaw === "saida") return "aplic";
+  if(mvRaw === "entrada"){
+    // heurística para entradas que são resgate/venda
+    if(desc.includes("resgat") || desc.includes("venda") || desc.includes("retir") || desc.includes("saque")) return "retir";
+    return "rend";
+  }
+
+  // fallback: usa tipo
+  if(String(l.tipo||"").toLowerCase() === "despesa") return "aplic";
+  // se for receita e tiver cara de resgate
+  if(desc.includes("resgat") || desc.includes("venda") || desc.includes("retir") || desc.includes("saque")) return "retir";
+  return "rend";
+}
+
+function investKindFromAsset(name){
+  const x = String(name||"").trim().toUpperCase();
+  if(!x) return "—";
+  // FIIs brasileiros quase sempre terminam em 11 (ex.: KNCR11)
+  if(/11$/.test(x)) return "FII";
+  // Poupanças/objetivos: nomes livres
+  if(x.startsWith("POUP") || x.startsWith("PREV") || x.startsWith("81-") || x.startsWith("82-") || x.startsWith("83-") || x.startsWith("84-") ||
+     x.includes("VIAGEM") || x.includes("REFORMA") || x.includes("CARRO") || x.includes("IPTU")) return "Poupança";
+  return "Ação";
+}
+
+function renderInvestAssetTable(rows){
+  if(!rows || !rows.length) return `<div class="muted">Sem dados.</div>`;
+  const hdr = `
+    <tr>
+      <th style="text-align:left;padding:8px 6px;border-bottom:1px solid #e5e7eb">Ativo</th>
+      <th style="text-align:left;padding:8px 6px;border-bottom:1px solid #e5e7eb">Tipo</th>
+      <th style="text-align:right;padding:8px 6px;border-bottom:1px solid #e5e7eb">APLIC</th>
+      <th style="text-align:right;padding:8px 6px;border-bottom:1px solid #e5e7eb">REND</th>
+      <th style="text-align:right;padding:8px 6px;border-bottom:1px solid #e5e7eb">RETIR</th>
+      <th style="text-align:right;padding:8px 6px;border-bottom:1px solid #e5e7eb">TOTAL*</th>
+    </tr>`;
+  const body = rows.map(r=>`
+    <tr>
+      <td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;white-space:nowrap">${escapeHTML(r.asset)}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #f1f5f9">${escapeHTML(r.kind)}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right">${money(r.aplic)}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right">${money(r.rend)}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right">${money(r.retir)}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #f1f5f9;text-align:right;font-weight:900">${money(r.total)}</td>
+    </tr>`).join("");
+  return `<div style="overflow:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:0.95rem">
+      <thead>${hdr}</thead>
+      <tbody>${body}</tbody>
+    </table>
+  </div>
+  <div class="hint">*TOTAL = APLIC + REND − RETIR (saldo teórico do ativo no ano).</div>`;
+}
+
+function ensureInvestDefaults(){
+  const cats = getCats();
+  const cur = Array.isArray(cats["Investimentos"]) ? cats["Investimentos"] : [];
+  if(cur && cur.length) return; // não mexe se já configurado
+
+  const defaults = [
+    "Viagem","Reforma","Carro","IPTU",
+    "BCRO11","FGAA11","KNCA11","KNCR11","LVBI11","MAXR11","MCCI11","PVBI11","RBRF11","RBRR11","RBVA11","RZTR11","XPLM11","KAFOF11","XPSF11",
+    "NTCO3","BBAS3F","BBDC4F","PETR3F","VALE3F"
+  ];
+
+  cats["Investimentos"] = defaults;
+  setCats(cats);
+}
+
+
+
 function fmtDate(iso){
   if(!iso) return "";
   const s = String(iso).trim();
@@ -72,45 +167,6 @@ function nextMonth(ym){
   const yy = d.getFullYear();
   const mm = String(d.getMonth()+1).padStart(2,"0");
   return `${yy}-${mm}`;
-}
-
-
-/* =========================
-   INVEST — helpers (proventos / tipo de ativo)
-========================= */
-
-function inferInvestMov(l){
-  // investMov salva a intenção explícita do lançamento
-  if(l && typeof l.investMov === "string" && l.investMov.trim()){
-    const mv = l.investMov.trim();
-    // compatibilidade com versões antigas
-    if(mv === "saida") return "aplic";
-    if(mv === "entrada"){
-      const desc = String(l?.descricao||"").toLowerCase();
-      if(/resgat|retir|saque|venda|liquid|retorno/.test(desc)) return "retir";
-      return "rend";
-    }
-    return mv;
-  }
-  // Legado: tenta inferir pelo tipo/descrição
-  if(l && l.tipo === "Despesa") return "aplic";
-  const desc = String(l?.descricao||"").toLowerCase();
-  if(/resgat|retir|saque|venda|liquid|retorno/.test(desc)) return "retir";
-  return "rend";
-}
-
-function classifyInvestAsset(assetName){
-  const a = String(assetName||"").trim().toUpperCase();
-  if(!a) return "Outros";
-
-  // Poupanças / metas (ex.: "81-Viagem", "Reforma", "Carro", "IPTU")
-  if(/VIAGEM|REFORMA|CARRO|IPTU|POUP|POUPAN/.test(a) || /^\d{1,3}-/.test(a)) return "Poupança";
-
-  // FIIs no Brasil normalmente terminam em 11 (BCRO11 etc)
-  if(/11$/.test(a)) return "FII";
-
-  // Demais: ações (NTCO3, BBAS3F, etc)
-  return "Ação";
 }
 
 /* =========================
@@ -309,9 +365,9 @@ function updateLaunchUI(){
   if(tipoSel){
     if(isInvest){
       tipoSel.disabled = true;
-      const mv = mov?.value || "aplic";
-      if(mv === "rend" || mv === "retir" || mv === "ajuste+") tipoSel.value = "Receita";
-      else if(mv === "aplic" || mv === "ajuste-") tipoSel.value = "Despesa";
+      const mv = mov?.value || "saida";
+      if(mv === "entrada" || mv === "ajuste+") tipoSel.value = "Receita";
+      else if(mv === "saida" || mv === "ajuste-") tipoSel.value = "Despesa";
     }else{
       tipoSel.disabled = false;
     }
@@ -385,8 +441,12 @@ function salvarLancamento(){
   let finalTipo = tipo;
 
   if(conta === "Banco do Brasil" && categoria === "Investimentos"){
-    investMov = document.getElementById("invest-mov")?.value || "aplic";
-    // aplic = saída; rend/retir = entrada; ajuste+/- para correções
+    const mvRaw = (document.getElementById("invest-mov")?.value || "aplic").trim().toLowerCase();
+    // normaliza (compatibilidade com versões antigas)
+    if(mvRaw === "saida") investMov = "aplic";
+    else if(mvRaw === "entrada") investMov = "rend";
+    else investMov = mvRaw;
+
     if(investMov === "rend" || investMov === "retir" || investMov === "ajuste+") finalTipo = "Receita";
     else finalTipo = "Despesa";
   }
@@ -466,7 +526,6 @@ function salvarLancamento(){
 
 let currentMonth = ymNow();
 let currentBank = "Bradesco";
-let investYearPref = null; // usado no Invest: "Rendimentos no ano"
 
 function initMesUI(){
   const monthEl = document.getElementById("month");
@@ -679,8 +738,7 @@ function renderMes(){
 
       <div class="row big" style="margin-top:10px"><span>Total gastos</span><span>${money(totalDes)}</span></div>
 
-      <h4 style="margin:10px 0 6px 0">Gastos por categoria (barra)</h4>
-      ${renderBars("", bars).replace("<h4", "<div style='display:none'><h4")}
+      ${renderBars("Gastos por categoria (barra)", bars)}
     </div>
   `;
 
@@ -713,110 +771,131 @@ function getInvestSaldoAnterior(month){
 
 function renderInvestimentos(){
   const data = StorageAPI.load();
-  const monthInput = document.getElementById("invest-month");
-  const month = monthInput?.value || currentMonth;
+  const month = document.getElementById("invest-month")?.value || ymNow();
+  const year = String(month).slice(0,4);
 
-  // Filtra somente Investimentos do BB
-  const list = data.lancamentos.filter(l =>
+  const listMonth = data.lancamentos.filter(l =>
     l.conta === "Banco do Brasil" &&
     l.categoria === "Investimentos" &&
     l.competencia === month
   );
 
-  // Entradas e saídas (fluxo)
-  const entradas = list.filter(l =>
-    l.tipo === "Receita" || l.tipo === "Transferência"
+  // Totais do mês
+  let aplicMes = 0, rendMes = 0, retirMes = 0;
+  listMonth.forEach(l=>{
+    const mv = normInvestMovValue(l);
+    const v = Number(l.valor||0);
+    if(mv === "aplic" || mv === "ajuste-") aplicMes += v;
+    else if(mv === "retir") retirMes += v;
+    else rendMes += v; // rend + ajuste+
+  });
+
+  const totalEntradas = listMonth
+    .filter(l => ["Receita","Transferência"].includes(l.tipo))
+    .reduce((s,l)=>s+Number(l.valor||0),0);
+
+  const totalSaidas = listMonth
+    .filter(l => ["Despesa","Transferência"].includes(l.tipo))
+    .reduce((s,l)=>s+Number(l.valor||0),0);
+
+  // Saldo anterior = saldo final do mês anterior
+  const prev = monthMinusOne(month);
+  const prevList = data.lancamentos.filter(l =>
+    l.conta === "Banco do Brasil" &&
+    l.categoria === "Investimentos" &&
+    l.competencia === prev
   );
-  const saidas = list.filter(l => l.tipo === "Despesa");
-
-  const totalEntradas = entradas.reduce((s,l)=>s+Number(l.valor||0),0);
-  const totalSaidas   = saidas.reduce((s,l)=>s+Number(l.valor||0),0);
-
-  // Saldo anterior (Invest)
-  const saldoAnterior = getInvestSaldoAnterior(month);
+  const prevEntradas = prevList
+    .filter(l => ["Receita","Transferência"].includes(l.tipo))
+    .reduce((s,l)=>s+Number(l.valor||0),0);
+  const prevSaidas = prevList
+    .filter(l => ["Despesa","Transferência"].includes(l.tipo))
+    .reduce((s,l)=>s+Number(l.valor||0),0);
+  const saldoAnterior = prevEntradas - prevSaidas;
   const saldoFinal = saldoAnterior + totalEntradas - totalSaidas;
 
-  // Agrupar por subcategoria
-  const porSub = {};
-  list.forEach(l=>{
-    const sub = l.subcategoria || "Outros";
-    if(!porSub[sub]) porSub[sub] = 0;
-    if(l.tipo === "Despesa") porSub[sub] -= Number(l.valor||0);
-    else porSub[sub] += Number(l.valor||0);
+  // Por ativo no mês (usa Subcategoria como "ativo")
+  const porAtivoMes = {};
+  listMonth.forEach(l=>{
+    const ativo = l.subcategoria || "Diversos";
+    const mv = normInvestMovValue(l);
+    const v = Number(l.valor||0);
+
+    let delta = 0;
+    if(mv === "aplic" || mv === "ajuste-") delta = -v;
+    else delta = v; // rend, retir, ajuste+
+
+    porAtivoMes[ativo] = (porAtivoMes[ativo] || 0) + delta;
   });
 
-  const bars = Object.entries(porSub)
-    .sort((a,b)=>Math.abs(b[1]) - Math.abs(a[1]));
+  const entriesMes = Object.entries(porAtivoMes)
+    .filter(([,v]) => Math.abs(v) > 0.00001)
+    .sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
 
-  // ===== Rendimentos por ativo (ano) =====
-  const allInv = data.lancamentos.filter(l =>
-    l.conta === "Banco do Brasil" && l.categoria === "Investimentos"
+  // Ano (acumulado) — por ativo
+  const listYear = data.lancamentos.filter(l =>
+    l.conta === "Banco do Brasil" &&
+    l.categoria === "Investimentos" &&
+    String(l.competencia||"").startsWith(year + "-")
   );
-  const yearsSet = new Set();
-  allInv.forEach(l=>{
-    const y = String(l.competencia||"").slice(0,4);
-    if(/^\d{4}$/.test(y)) yearsSet.add(y);
-  });
-  const years = Array.from(yearsSet).sort((a,b)=>Number(b)-Number(a));
-  let selectedYear = investYearPref && years.includes(investYearPref) ? investYearPref : String(month).slice(0,4);
-  if(!years.includes(selectedYear) && years.length) selectedYear = years[0];
-  const yearOptions = (years.length ? years : [selectedYear]).map(y=>
-    `<option value="${y}" ${y===selectedYear?"selected":""}>${y}</option>`
-  ).join("");
 
-  const invYear = allInv.filter(l => String(l.competencia||"").startsWith(selectedYear));
-  const rendByAsset = {};
-  invYear.forEach(l=>{
-    const mov = inferInvestMov(l);
-    if(mov !== "rend") return;
-    const asset = (l.subcategoria || "Outros").trim() || "Outros";
-    rendByAsset[asset] = (rendByAsset[asset]||0) + Number(l.valor||0);
-  });
-  const rendEntries = Object.entries(rendByAsset)
-    .filter(([,v])=>Number(v) !== 0)
-    .sort((a,b)=>Number(b[1]) - Number(a[1]));
+  const cats = getCats();
+  const assetsFromCats = Array.isArray(cats["Investimentos"]) ? cats["Investimentos"] : [];
+  const assetsFromData = Array.from(new Set(listYear.map(l=> l.subcategoria || "Diversos")));
+  const assets = Array.from(new Set([...assetsFromCats, ...assetsFromData])).filter(Boolean);
 
-  const totalsByType = { "Poupança":0, "FII":0, "Ação":0, "Outros":0 };
-  rendEntries.forEach(([asset,val])=>{
-    const t = classifyInvestAsset(asset);
-    totalsByType[t] = (totalsByType[t]||0) + Number(val||0);
-  });
-  const totalRendAno = Object.values(totalsByType).reduce((s,v)=>s+Number(v||0),0);
-  const tagsRendAno = Object.entries(totalsByType)
-    .filter(([,v])=>Math.abs(Number(v||0)) > 0.00001)
-    .map(([t,v])=>`<span class="tag tipo">${t}: ${money(v)}</span>`)
-    .join("");
-
-
-  const el = document.getElementById("invest-view");
-  if(!el) return;
-
-  el.innerHTML = `
-    <div class="row big"><span>Saldo anterior</span><span>${money(saldoAnterior)}</span></div>
-    <div class="row big"><span>Entradas</span><span>${money(totalEntradas)}</span></div>
-    <div class="row big"><span>Saídas</span><span>${money(totalSaidas)}</span></div>
-    <div class="row big"><span>Saldo final</span><span>${money(saldoFinal)}</span></div>
-    <hr/>
-    ${renderBars("Movimento por tipo", bars)}
-    <hr/>
-    <h4 style="margin:10px 0 6px 0">Lançamentos</h4>
-    ${list.length
-  ? renderLancList(
-      list.slice().sort((a,b)=>Number(b.id)-Number(a.id))
-    )
-  : `<div class="muted">Sem lançamentos de investimento neste mês.</div>`
-}
-
-  `;
-
-  const yearSel = document.getElementById("invest-year");
-  if(yearSel){
-    yearSel.addEventListener("change", ()=>{
-      investYearPref = yearSel.value;
-      renderInvestimentos();
+  const rows = assets.map(asset=>{
+    let aplic=0, rend=0, retir=0;
+    listYear.forEach(l=>{
+      const a = l.subcategoria || "Diversos";
+      if(a !== asset) return;
+      const mv = normInvestMovValue(l);
+      const v = Number(l.valor||0);
+      if(mv === "aplic" || mv === "ajuste-") aplic += v;
+      else if(mv === "retir") retir += v;
+      else rend += v; // rend + ajuste+
     });
-  }
+    const total = aplic + rend - retir;
+    return { asset, kind: investKindFromAsset(asset), aplic, rend, retir, total };
+  }).sort((a,b)=> (b.rend - a.rend) || (b.total - a.total) || a.asset.localeCompare(b.asset));
 
+  const sumKind = (kind, field) => rows.filter(r=>r.kind===kind).reduce((s,r)=>s+Number(r[field]||0),0);
+  const sumAll = (field) => rows.reduce((s,r)=>s+Number(r[field]||0),0);
+
+  const poupRend = sumKind("Poupança","rend");
+  const fiiRend  = sumKind("FII","rend");
+  const acoRend  = sumKind("Ação","rend");
+
+  const investEl = document.getElementById("invest-view");
+  if(!investEl) return;
+
+  investEl.innerHTML = `
+    <div class="row big"><span>Saldo anterior</span><span>${money(saldoAnterior)}</span></div>
+    <div class="row big"><span>Entradas (mês)</span><span>${money(totalEntradas)}</span></div>
+    <div class="row big"><span>Saídas (mês)</span><span>${money(totalSaidas)}</span></div>
+    <div class="row big"><span>Saldo final (mês)</span><span>${money(saldoFinal)}</span></div>
+
+    <hr/>
+
+    <div class="row"><span><b>Totais do mês (Invest)</b></span><span></span></div>
+    <div class="row"><span>APLIC (saídas)</span><span>${money(aplicMes)}</span></div>
+    <div class="row"><span>REND (dividendos/juros)</span><span>${money(rendMes)}</span></div>
+    <div class="row"><span>RETIR (resgates/vendas)</span><span>${money(retirMes)}</span></div>
+
+    ${entriesMes.length ? renderBars("Por ativo (mês)", entriesMes) : `<div class="hint">Sem movimento por ativo neste mês.</div>`}
+
+    <hr/>
+
+    <div class="row"><span><b>Proventos acumulados no ano (${year})</b></span><span>${money(sumAll("rend"))}</span></div>
+    <div class="row"><span>Poupanças</span><span>${money(poupRend)}</span></div>
+    <div class="row"><span>FIIs</span><span>${money(fiiRend)}</span></div>
+    <div class="row"><span>Ações</span><span>${money(acoRend)}</span></div>
+
+    <details style="margin-top:10px" open>
+      <summary style="cursor:pointer;font-weight:900">Tabela por ativo (ano)</summary>
+      ${renderInvestAssetTable(rows)}
+    </details>
+  `;
 }
 
 
@@ -931,22 +1010,139 @@ function shouldChargeSubscription(sub, month){
   return true; // mensal
 }
 
+function normLower(s){
+  return String(s||"").trim().toLowerCase();
+}
+
+function subChargeKey(subId, month){
+  return `sub:${subId}:${month}`;
+}
+
+function getSubNameSet(sub){
+  const names = new Set();
+  if(sub?.name) names.add(normLower(sub.name));
+  if(Array.isArray(sub?.aliases)){
+    for(const a of sub.aliases){
+      const n = normLower(a);
+      if(n) names.add(n);
+    }
+  }
+  return names;
+}
+
+function getSubValueSet(sub){
+  const vals = new Set();
+  if(isFinite(Number(sub?.valor))) vals.add(Number(sub.valor));
+  if(Array.isArray(sub?.valuesHistory)){
+    for(const v of sub.valuesHistory){
+      const n = Number(v);
+      if(isFinite(n)) vals.add(n);
+    }
+  }
+  return vals;
+}
+
+function upgradeSubscriptionChargeKeys(data){
+  let changed = false;
+  if(!Array.isArray(data.lancamentos)) data.lancamentos = [];
+  for(const l of data.lancamentos){
+    if(!l) continue;
+    if(l.conta !== "Cartão") continue;
+    if(l.tipo !== "Assinatura") continue;
+    if(!l.subscriptionId || !l.competencia) continue;
+
+    const key = subChargeKey(l.subscriptionId, l.competencia);
+    if(l.subscriptionKey !== key){
+      l.subscriptionKey = key;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function linkLegacySubscriptionCharges(data, sub, month){
+  // Liga lançamentos antigos (sem subscriptionId) a um cadastro de assinatura,
+  // usando alias/histórico de valores para evitar duplicação no futuro.
+  let changed = false;
+  if(!Array.isArray(data.lancamentos)) data.lancamentos = [];
+
+  const key = subChargeKey(sub.id, month);
+  const names = getSubNameSet(sub);
+  const values = getSubValueSet(sub);
+
+  for(const l of data.lancamentos){
+    if(!l) continue;
+    if(l.conta !== "Cartão") continue;
+    if(l.tipo !== "Assinatura") continue;
+    if(l.competencia !== month) continue;
+    if(l.subscriptionId) continue;
+
+    const d = normLower(l.descricao);
+    const v = Number(l.valor);
+
+    if(names.has(d) && values.has(v)){
+      l.subscriptionId = sub.id;
+      l.subscriptionKey = key;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function dedupeSubscriptionChargesForMonth(data, month){
+  // Remove duplicatas do MESMO cadastro no mesmo mês (somente meses abertos).
+  let changed = false;
+  if(!Array.isArray(data.lancamentos)) data.lancamentos = [];
+
+  const seen = new Set();
+  const out = [];
+
+  for(const l of data.lancamentos){
+    if(!l || l.conta !== "Cartão" || l.tipo !== "Assinatura" || l.competencia !== month){
+      out.push(l);
+      continue;
+    }
+
+    const key = l.subscriptionKey || (l.subscriptionId ? subChargeKey(l.subscriptionId, month) : null);
+
+    if(key){
+      if(seen.has(key)){
+        changed = true;
+        continue;
+      }
+      seen.add(key);
+
+      if(l.subscriptionId && !l.subscriptionKey){
+        l.subscriptionKey = key;
+        changed = true;
+      }
+    }
+
+    out.push(l);
+  }
+
+  if(changed) data.lancamentos = out;
+  return changed;
+}
+
 function subscriptionChargeExists(data, sub, month){
+  const key = subChargeKey(sub.id, month);
+  const names = getSubNameSet(sub);
+  const values = getSubValueSet(sub);
+
   return data.lancamentos.some(l =>
     l.conta === "Cartão" &&
-    l.tipo === "Assinatura" &&
     l.competencia === month &&
     (
-      l.subscriptionId === sub.id ||
-      (!l.subscriptionId &&
-        String(l.descricao||"").trim().toLowerCase() === String(sub.name||"").trim().toLowerCase() &&
-        Number(l.valor||0) === Number(sub.valor||0)
-      )
+      l.subscriptionKey === key ||
+      (l.tipo === "Assinatura" && l.subscriptionId === sub.id) ||
+      (l.tipo === "Assinatura" && !l.subscriptionId && names.has(normLower(l.descricao)) && values.has(Number(l.valor)))
     )
   );
 }
 
 function createSubscriptionCharge(data, sub, month){
+  const key = subChargeKey(sub.id, month);
   data.lancamentos.push({
     id: uid(),
     conta: "Cartão",
@@ -958,22 +1154,34 @@ function createSubscriptionCharge(data, sub, month){
     competencia: month,
     data: isoFromYMDay(month, sub.dueDay || 1),
     descricao: sub.name || "Assinatura",
-    subscriptionId: sub.id
+    subscriptionId: sub.id,
+    subscriptionKey: key
   });
 }
 
 function ensureSubscriptionsForMonth(month){
   const data = loadData();
-  // Se a fatura já está fechada, não lança assinaturas automaticamente.
+
+  // Se a fatura já está fechada, não mexe nos lançamentos.
   if(getCardClosingInfo(data, month)) return false;
+
   data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
 
   let changed = false;
+
+  // Migração leve: garante chaves em lançamentos já existentes (não altera valores)
+  if(upgradeSubscriptionChargeKeys(data)) changed = true;
+
+  // Remove duplicatas de assinaturas no mês (somente meses abertos)
+  if(dedupeSubscriptionChargesForMonth(data, month)) changed = true;
 
   for(const sub of data.subscriptions){
     if(!sub || !sub.id) continue;
     if(sub.active === false) continue;
     if(!shouldChargeSubscription(sub, month)) continue;
+
+    // Liga lançamentos legados (sem id) a este cadastro, usando alias/histórico
+    if(linkLegacySubscriptionCharges(data, sub, month)) changed = true;
 
     if(subscriptionChargeExists(data, sub, month)) continue;
 
@@ -1026,6 +1234,8 @@ function addSubscription(){
     startMonth: String(startMonth).trim(),
     dueDay,
     active: true,
+    aliases: [name.trim()],
+    valuesHistory: [valor],
     categoria: "Cartão",
     subcategoria: "Assinaturas"
   });
@@ -1089,6 +1299,23 @@ function editSubscription(id){
   const dueDayRaw = prompt("Dia de cobrança (1 a 31):", String(sub.dueDay || 1));
   if(dueDayRaw === null) return;
   const dueDay = Math.min(Math.max(1, Number(dueDayRaw||1)), 31);
+
+// guarda histórico para evitar duplicações em meses antigos (lançamentos legados sem id)
+sub.aliases = Array.isArray(sub.aliases) ? sub.aliases : [];
+sub.valuesHistory = Array.isArray(sub.valuesHistory) ? sub.valuesHistory : [];
+
+const oldName = String(sub.name || "").trim();
+const oldVal  = Number(sub.valor || 0);
+
+if(oldName){
+  const key = normLower(oldName);
+  if(key && !sub.aliases.some(a => normLower(a) === key)){
+    sub.aliases.push(oldName);
+  }
+}
+if(isFinite(oldVal) && !sub.valuesHistory.some(v => Number(v) === oldVal)){
+  sub.valuesHistory.push(oldVal);
+}
 
   sub.name = String(name).trim();
   sub.valor = valor;
@@ -1345,27 +1572,6 @@ function editLancamento(id){
   l.categoria = cat;
   l.subcategoria = sub;
 
-  // Se for investimento (BB + categoria Investimentos), permite ajustar o "Movimento"
-  if(l.conta === "Banco do Brasil" && l.categoria === "Investimentos"){
-    const currentMov = inferInvestMov(l);
-    const mvInput = prompt(
-      'Movimento (aplic=r$ sai, rend=provento, retir=resgate/venda, ajuste+/ajuste-):',
-      currentMov
-    );
-    if(mvInput !== null && String(mvInput).trim() !== ""){
-      let mv = String(mvInput).trim().toLowerCase();
-      if(mv === "entrada") mv = "rend";
-      if(mv === "saida") mv = "aplic";
-      // aceita apenas valores conhecidos; senão mantém o atual
-      if(["aplic","rend","retir","ajuste+","ajuste-"].includes(mv)){
-        l.investMov = mv;
-      }
-    }
-    // Mantém o tipo coerente com o movimento
-    const mvFinal = inferInvestMov(l);
-    l.tipo = (mvFinal === "aplic" || mvFinal === "ajuste-") ? "Despesa" : "Receita";
-  }
-
 
   l.valor = valor;
   l.descricao = desc.trim();
@@ -1477,6 +1683,8 @@ function openCats(){
 
   const chip=document.getElementById("chip-month");
   if(chip) chip.textContent=currentMonth;
+
+  ensureInvestDefaults();
 
   fillCategorySelects();
   wireCategoryChange();
