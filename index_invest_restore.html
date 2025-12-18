@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Financeiro</title>
+  <meta name="theme-color" content="#4b7bec" />
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    :root{
+      --bg:#f5f5fa;
+      --card:#ffffff;
+      --border:#e5e7eb;
+      --text:#111827;
+      --muted:#6b7280;
+
+      --primary:#4b7bec;
+      --primary-soft:#e7efff;
+
+      --brad-soft:#fde8ea;
+      --brad-pill:#e98d95;
+
+      --bb-soft:#fff4cc;
+      --bb-pill:#f4c247;
+
+      --radius:16px;
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background:var(--bg);
+      color:var(--text);
+    }
+
+    header{
+      padding:14px 14px 6px 14px;
+    }
+
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:14px 16px;
+      background:linear-gradient(90deg,var(--primary),#2d7a5b);
+      color:#fff;
+      border-radius:18px;
+      box-shadow:0 10px 24px rgba(0,0,0,.08);
+    }
+    .topbar .title{
+      font-size:22px;
+      font-weight:800;
+      letter-spacing:.2px;
+    }
+    .chip{
+      background:rgba(255,255,255,.18);
+      border:1px solid rgba(255,255,255,.22);
+      color:#fff;
+      padding:6px 10px;
+      border-radius:999px;
+      font-weight:700;
+      font-size:13px;
+    }
+
+    main{
+      padding:10px 14px 80px 14px;
+      max-width:900px;
+      margin:0 auto;
+    }
+
+    .view{display:none}
+    .view.active{display:block}
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      padding:14px;
+      box-shadow:0 10px 24px rgba(0,0,0,.05);
+      margin-bottom:12px;
+    }
+
+    label{
+      display:block;
+      font-size:13px;
+      color:var(--muted);
+      margin:10px 0 6px 0;
+      font-weight:700;
+    }
+
+    input,select{
+      width:100%;
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:12px 12px;
+      font-size:16px;
+      outline:none;
+      background:#fff;
+    }
+
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      border:none;
+      border-radius:14px;
+      padding:12px 14px;
+      font-weight:800;
+      cursor:pointer;
+      background:var(--primary);
+      color:#fff;
+      width:100%;
+      margin-top:12px;
+    }
+    .btn.secondary{background:#20bf6b}
+    .btn.danger{background:#eb3b5a}
+    .btn.small{width:auto;padding:10px 12px;border-radius:12px;font-weight:800}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+input:disabled,select:disabled{opacity:.75}
+
+    .hint{margin-top:8px;color:var(--muted);font-size:12px}
+    .muted{color:var(--muted)}
+
+    nav{
+      position:fixed;
+      left:0;right:0;bottom:0;
+      background:#ffffffee;
+      backdrop-filter: blur(8px);
+      border-top:1px solid var(--border);
+      display:flex;
+      gap:8px;
+      padding:10px;
+      justify-content:space-between;
+      z-index:20;
+    }
+    nav button{
+      flex:1;
+      border:none;
+      background:#eef2ff;
+      color:#111827;
+      border-radius:14px;
+      padding:12px 6px;
+      font-weight:800;
+      cursor:pointer;
+    }
+    nav button.active{
+      background:var(--primary);
+      color:#fff;
+    }
+
+    .pillbar{
+      display:flex;
+      gap:10px;
+      padding:10px;
+      background:#eef2ff;
+      border-radius:999px;
+      border:1px solid var(--border);
+      margin-top:8px;
+    }
+    .pill{
+      flex:1;
+      border:none;
+      border-radius:999px;
+      padding:12px 10px;
+      font-weight:900;
+      cursor:pointer;
+      background:#fff;
+      border:1px solid var(--border);
+    }
+    .pill.active{
+      background:var(--primary);
+      color:#fff;
+      border-color:transparent;
+    }
+
+    .brad-text{color:#b4232a}
+    .bb-text{color:#b98000}
+
+    .bankcard{
+      border-radius:var(--radius);
+      border:1px solid var(--border);
+      padding:14px;
+    }
+    .bank-brad{background:var(--brad-soft)}
+    .bank-bb{background:var(--bb-soft)}
+
+    .row{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      padding:6px 0;
+      font-size:15px;
+    }
+    .row.big{
+      font-size:18px;
+      font-weight:900;
+      padding:6px 0 10px 0;
+    }
+
+    .tags{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-top:10px;
+    }
+    .tag{
+      padding:6px 10px;
+      border-radius:999px;
+      font-weight:900;
+      font-size:12px;
+      background:#eef2ff;
+      border:1px solid var(--border);
+    }
+    .tag.brad{background:#ffe2e5;border-color:#ffd0d6;color:#9f1d25}
+    .tag.bb{background:#fff0b3;border-color:#ffe38a;color:#8a5b00}
+    .tag.tipo{background:#e1f2ea;border-color:#c7ead8;color:#1e5c43}
+
+    .bars{margin-top:6px}
+    .bar-row{margin:10px 0}
+    .bar-head{display:flex;justify-content:space-between;gap:10px;font-weight:900}
+    .bar-label{max-width:70%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .bar-track{
+      height:12px;border-radius:999px;background:#e5e7eb;margin-top:8px;overflow:hidden
+    }
+    .bar-fill{
+      height:100%;
+      border-radius:999px;
+      background:linear-gradient(90deg,#20bf6b,#4b7bec,#eb3b5a);
+      width:0%;
+    }
+
+.bar-fill.in {
+  background: linear-gradient(90deg, #4b7bec, #6aa8ff);
+}
+.bar-fill.out {
+  background: linear-gradient(90deg, #eb3b5a, #ff9aa8);
+}
+.bar-track.center {
+  position: relative;
+}
+.bar-track.center::before{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:0;
+  bottom:0;
+  width:2px;
+  background:#ccc;
+}
+/* ===== Invest: barras divergentes ===== */
+.bar-fill.in {
+  background: linear-gradient(90deg, #4b7bec, #6aa8ff);
+}
+
+.bar-fill.out {
+  background: linear-gradient(90deg, #eb3b5a, #ff9aa8);
+}
+
+.bar-track.center {
+  position: relative;
+}
+
+.bar-track.center::before{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:0;
+  bottom:0;
+  width:2px;
+  background:#ccc;
+}
+
+/* ===== Chips visuais (lista Invest) ===== */
+.tag.in {
+  background:#e7efff;
+  color:#1f4fd8;
+}
+
+.tag.out {
+  background:#fde8ea;
+  color:#9f1d25;
+}
+
+.tag.trf {
+  background:#fff4cc;
+  color:#8a5b00;
+}
+
+
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div class="title">Financeiro</div>
+      <div id="chip-month" class="chip">—</div>
+    </div>
+  </header>
+
+  <main>
+    <!-- LANÇAR -->
+    <section id="view-lancar" class="view active">
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Novo lançamento</h3>
+
+        <label>Conta</label>
+        <select id="conta">
+          <option>Bradesco</option>
+          <option>Banco do Brasil</option>
+        </select>
+
+        <label>Tipo</label>
+        <select id="tipo">
+          <option>Despesa</option>
+          <option>Receita</option>
+          <option>Transferência</option>
+        </select>
+<label>Destino da transferência</label>
+<select id="destinoTrf">
+  <option value="">—</option>
+  <option value="BB">Banco do Brasil</option>
+  <option value="BRAD">Bradesco</option>
+</select>
+<div class="hint">Use apenas quando Tipo = Transferência.</div>
+
+
+        <label>Categoria</label>
+        <select id="categoria"></select>
+
+        <label>Subcategoria</label>
+        <select id="subcategoria"></select>
+
+        <div id="invest-move-wrap" style="display:none">
+          <label>Movimento (Invest)</label>
+          <select id="invest-mov">
+            <option value="aplic">Aplicação/Compra (APLIC)</option>
+            <option value="rend">Provento/Dividendo (REND)</option>
+            <option value="retir">Resgate/Venda (RETIR)</option>
+            <option value="ajuste+">Ajuste (+)</option>
+            <option value="ajuste-">Ajuste (-)</option>
+</select>
+          <div class="hint">Para investimentos em modo fluxo: escolha se este lançamento entra ou sai.</div>
+        </div>
+
+        <label>Valor</label>
+        <input id="valor" type="number" step="0.01" />
+
+
+        <label>Data (real)</label>
+        <input id="data" type="date" />
+        <div class="hint">Data do pagamento/recebimento. (Competência é o mês que entra no orçamento.)</div>
+
+        <label>Competência</label>
+        <input id="competencia" type="month" />
+
+        <label>Descrição</label>
+        <input id="descricao" placeholder="Ex.: mercado, uber, aporte..." />
+
+        <button class="btn secondary" onclick="salvarLancamento()">Salvar</button>
+        <div class="hint"></div>
+      </div>
+    </section>
+
+    <!-- MÊS -->
+    <section id="view-mes" class="view">
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Mês</h3>
+
+        <label>Mês (competência)</label>
+        <select id="month"></select>
+
+        <div class="pillbar" style="margin-top:6px">
+          <button id="pill-brad" class="pill active brad-text" data-bank="Bradesco">Bradesco</button>
+          <button id="pill-bb" class="pill bb-text" data-bank="Banco do Brasil">BB</button>
+        </div>
+        <div class="hint">Alternar banco muda o resumo e a lista.</div>
+      </div>
+
+      <div id="dashboard" class="card"></div>
+      <div id="listagem" class="card"></div>
+    </section>
+
+    <!-- CARTÃO -->
+<section id="view-cartao" class="view">
+  <div class="card">
+    <h3 style="margin:0 0 8px 0">Cartão</h3>
+
+    <label>Mês (competência)</label>
+    <input id="card-month" type="month" />
+
+    <div class="hint">Assinaturas e gastos gerais do cartão ficam aqui. O mês é a cobrança da fatura.</div>
+  </div>
+
+  
+  <div class="card">
+    <h3 style="margin:0 0 8px 0">Fechamento da fatura</h3>
+
+    <div id="card-close-status" class="hint" style="margin-top:0">
+      Fatura aberta. Ao fechar, o app cria um lançamento de pagamento no mês escolhido.
+    </div>
+
+    <label>Conta para pagar</label>
+    <select id="card-pay-account">
+      <option>Bradesco</option>
+      <option>Banco do Brasil</option>
+    </select>
+
+    <label>Mês do pagamento</label>
+    <input id="card-pay-month" type="month" />
+
+    <label>Data (real) do pagamento</label>
+    <input id="card-pay-date" type="date" />
+
+    <button class="btn secondary" id="btnCloseCard" type="button" onclick="closeCardStatement()">✅ Fechar fatura e gerar pagamento</button>
+    <button class="btn danger" id="btnReopenCard" type="button" onclick="reopenCardStatement()" style="display:none">↩️ Reabrir fatura</button>
+
+    <div class="hint">Fechar congela a fatura do mês selecionado e cria um lançamento de pagamento no mês escolhido.</div>
+  </div>
+
+<div class="card">
+    <h3 style="margin:0 0 8px 0">Novo gasto no cartão</h3>
+
+    <label>Data (real)</label>
+    <input id="card-date" type="date" />
+    <div class="hint">Data da compra/pagamento. (Competência é o mês da fatura.)</div>
+
+    <label>Categoria</label>
+    <select id="card-categoria"></select>
+
+    <label>Subcategoria</label>
+    <select id="card-subcategoria"></select>
+
+    <label>Valor</label>
+    <input id="card-valor" type="number" step="0.01" />
+
+    <label>Descrição</label>
+    <input id="card-descricao" placeholder="Ex.: mercado, farmácia, app..." />
+
+    <button class="btn secondary" type="button" id="btn-card-save" onclick="salvarCartaoGasto()">Salvar gasto do cartão</button>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0 0 8px 0">Assinaturas</h3>
+    <div class="hint" style="margin-top:0">Cadastre suas assinaturas e deixe o app lançar automaticamente na fatura do mês.</div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+      <button class="btn small" type="button" id="btn-add-sub" onclick="addSubscription()">+ Cadastrar assinatura</button>
+      <button class="btn small" type="button" id="btn-refresh-card" onclick="renderCartao()">↻ Atualizar</button>
+    </div>
+
+    <div id="subs-list" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card">
+    <div id="card-list"></div>
+  </div>
+</section>
+
+<!-- INVEST -->
+    <section id="view-invest" class="view">
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Investimentos (BB)</h3>
+
+        <label>Mês (competência)</label>
+        <input id="invest-month" type="month" />
+
+        <div class="hint">Aba Invest considera apenas lançamentos com Conta = Banco do Brasil e Categoria = Investimentos.</div>
+      </div>
+
+      <div class="card">
+        <div id="invest-view"></div>
+      </div>
+</section>
+
+    <!-- MAIS -->
+    <section id="view-mais" class="view">
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Mais</h3>
+        <button class="btn" onclick="exportExcel()">📤 Exportar Excel (mês)</button>
+        <div class="hint">Se não baixar, provavelmente é cache antigo do GitHub Pages.</div>
+      </div>
+<button class="btn" id="btnPwaUpdate" type="button" onclick="checkForUpdate()">🔄 Atualizar app</button>
+<div id="pwa-update-status" class="hint"></div>
+
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Categorias & Subcategorias</h3>
+        <button class="btn small" onclick="openCats()">Gerenciar</button>
+        <div id="cats-preview" class="hint"></div>
+      </div>
+
+<!-- BACKUP (cole dentro de uma <section class="view">, ex.: view-launch) -->
+<div class="card" id="backup-card">
+  <h3 style="margin:0 0 8px 0">Backup</h3>
+  <div class="hint" style="margin-top:0">
+    Exporte/importe seus dados. O botão “Backup” salva uma cópia local e também baixa um arquivo .json.
+  </div>
+
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+    <button type="button" class="btn" id="btnBackupNow">Backup</button>
+    <button type="button" class="btn" id="btnImportPick">Importar (restaurar)</button>
+
+    <input id="importFileJSON" type="file" accept="application/json,.json" style="display:none" />
+  </div>
+
+  <div id="backupMeta" class="hint" style="margin-top:10px"></div>
+</div>
+
+    </section>
+  </main>
+
+  <nav>
+    <button id="tab-lancar" class="active" onclick="showView('lancar')">+ Lançar</button>
+    <button id="tab-mes" onclick="showView('mes')">Mês</button>
+    <button id="tab-cartao" onclick="showView('cartao')">Cartão</button>
+    <button id="tab-invest" onclick="showView('invest')">Invest</button>
+    <button id="tab-mais" onclick="showView('mais')">Mais</button>
+  </nav>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="storage.js"></script>
+  <script src="app.js"></script>
+
+
+  <script>
+  // PWA (instala como app + offline)
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js");
+    });
+  }
+  </script>
+
+<script>
+/* =========================
+   BACKUP / EXPORT / IMPORT
+   (pega TODAS as keys do localStorage do app)
+========================= */
+(function () {
+  const BK_PREFIX = "__FINBK__";        // prefixo interno (para não exportar os próprios backups)
+  const BK_LAST   = BK_PREFIX + "LAST";
+  const BK_LOCAL  = BK_PREFIX + "LOCAL"; // guarda 1 snapshot local (último backup)
+
+  function pad2(n){ return String(n).padStart(2,"0"); }
+  function stamp(d=new Date()){
+    return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}_${pad2(d.getHours())}${pad2(d.getMinutes())}`;
+  }
+  function download(filename, text){
+    const blob = new Blob([text], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function snapshotAll(){
+    const data = {};
+    for (let i=0; i<localStorage.length; i++){
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (k.startsWith(BK_PREFIX)) continue; // não exporta backups internos
+      data[k] = localStorage.getItem(k);
+    }
+    return {
+      app: "financeiro",
+      schema: 1,
+      exportedAt: new Date().toISOString(),
+      data
+    };
+  }
+
+  function renderMeta(){
+    const el = document.getElementById("backupMeta");
+    if (!el) return;
+    const last = localStorage.getItem(BK_LAST);
+    const hasLocal = !!localStorage.getItem(BK_LOCAL);
+    el.innerHTML =
+      `Backup local: <b>${hasLocal ? "sim" : "não"}</b>` +
+      (last ? ` • Último backup: <b>${new Date(last).toLocaleString("pt-BR")}</b>` : "");
+  }
+
+  function backupNow(){
+    const payload = snapshotAll();
+    // salva 1 cópia local
+    localStorage.setItem(BK_LOCAL, JSON.stringify(payload));
+    localStorage.setItem(BK_LAST, new Date().toISOString());
+
+    // e baixa o arquivo
+    const filename = `financeiro_backup_${stamp()}.json`;
+    download(filename, JSON.stringify(payload, null, 2));
+    renderMeta();
+  }
+
+  async function importFromFile(file){
+    const text = await file.text();
+    let payload;
+    try { payload = JSON.parse(text); }
+    catch { alert("Arquivo inválido: não é JSON."); return; }
+
+    if (!payload?.data || typeof payload.data !== "object") {
+      alert("Backup inválido: não encontrei 'data' dentro do arquivo.");
+      return;
+    }
+
+    const ok = confirm("Importar vai SUBSTITUIR os dados atuais deste navegador para este app. Continuar?");
+    if (!ok) return;
+
+    // Restaura apenas as chaves do backup (sobrescreve o que existir com o mesmo nome)
+    for (const [k, v] of Object.entries(payload.data)) {
+      if (typeof v === "string") localStorage.setItem(k, v);
+    }
+
+    alert("Importado! Vou recarregar a página agora.");
+    location.reload();
+  }
+
+  function init(){
+    const btnBackup = document.getElementById("btnBackupNow");
+    const btnPick   = document.getElementById("btnImportPick");
+    const input     = document.getElementById("importFileJSON");
+
+    if (btnBackup) btnBackup.addEventListener("click", backupNow);
+
+    if (btnPick && input){
+      btnPick.addEventListener("click", () => input.click());
+      input.addEventListener("change", async () => {
+        const f = input.files && input.files[0];
+        input.value = "";
+        if (f) await importFromFile(f);
+      });
+    }
+
+    renderMeta();
+  }
+
+  document.addEventListener("DOMContentLoaded", init);
+})();
+</script>
+
+</body>
+</html>
