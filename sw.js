@@ -1,14 +1,15 @@
 /* sw.js — Orçamento (PWA)
    Cache name bump forces update (incl. new app.js) */
-const CACHE_NAME = "orcamento-cache-v3"; // <-- aumente vN quando publicar mudanças
+const CACHE_NAME = "orcamento-cache-v4"; // <-- aumente vN quando publicar mudanças
 
 const ASSETS = [
   "./",
   "./index.html",
   "./app.js",
+  "./storage.js",
   "./manifest.json",
-  "./icon-192.png",
-  "./icon-512.png"
+  "./icons/icon-192.png",
+  "./icons/icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {

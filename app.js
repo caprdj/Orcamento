@@ -799,7 +799,7 @@ function renderInvestimentos(){
     .reduce((s,l)=>s+Number(l.valor||0),0);
 
   // Saldo anterior = saldo final do mês anterior
-  const prev = monthMinusOne(month);
+  const prev = prevMonth(month);
   const prevList = data.lancamentos.filter(l =>
     l.conta === "Banco do Brasil" &&
     l.categoria === "Investimentos" &&
