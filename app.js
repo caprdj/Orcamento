@@ -685,15 +685,28 @@ function renderMes(){
   // Importante: cartão não mistura com mês
   const LM = L.filter(l => l.conta === conta && l.conta !== "Cartão");
 
-  // Auto saldo anterior (fluxo do mês anterior)
-  const saldoAnterior = computeSaldoAnterior(conta, month);
 
-  // Receitas do mês (exceto saldo anterior)
-  const receitas = LM.filter(l =>
-  l.tipo === "Receita" ||
-  (l.tipo === "Transferência" && conta === "Banco do Brasil") // ✅ entra no BB
+   // Saldo anterior lançado manualmente (Renda > Saldo anterior)
+const saldoAnteriorLancado = LM
+  .filter(l => l.tipo === "Receita" && l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
+  .reduce((a,b)=>a+Number(b.valor||0),0);
+
+// Saldo anterior automático (fluxo do mês anterior)
+const saldoAnteriorAuto = computeSaldoAnterior(conta, month);
+
+// ✅ saldo anterior final (auto + lançado)
+const saldoAnterior = saldoAnteriorAuto + saldoAnteriorLancado;
+
+  
+// Receitas do mês (exceto "Saldo anterior" lançado, que já entrou em saldoAnterior)
+const receitas = LM.filter(l =>
+  (
+    l.tipo === "Receita" ||
+    (l.tipo === "Transferência" && conta === "Banco do Brasil")
+  ) &&
+  !(l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
 );
-  const totalRec = receitas.reduce((a,b)=>a+Number(b.valor||0),0);
+  
 
   // Despesas do mês (Despesa/Transferência)
   const despesas = LM.filter(l =>
