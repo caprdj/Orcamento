@@ -31,7 +31,10 @@
 })();
 
 function loadData(){ return window.StorageAPI.load(); }
-function saveData(data){ window.StorageAPI.save(data); }
+function saveData(data){
+  window.StorageAPI.save(data);
+  try{ computeSaldoAnterior._cache = {}; }catch(e){}
+}
 
 /* =========================
    HELPERS
@@ -514,9 +517,32 @@ function computeSaldoAnterior(conta, month){
   const cache = computeSaldoAnterior._cache || (computeSaldoAnterior._cache = {});
   const key = (c,m)=> `${c}__${m}`;
 
+  // mês mais antigo que existe para esta conta (YYYY-MM)
+  const months = data.lancamentos
+    .filter(l => l.showInSaldo !== false) // não usado, mas não atrapalha
+    .filter(l => l.conta === conta && l.conta !== "Cartão" && /^\d{4}-\d{2}$/.test(String(l.competencia||"")))
+    .map(l => l.competencia);
+
+  const minMonth = months.length ? months.reduce((a,b)=> a < b ? a : b) : null;
+
   const hasAny = (c,m)=> data.lancamentos.some(l =>
     l.conta === c && l.conta !== "Cartão" && l.competencia === m
   );
+
+  function stepBackToMonthWithData(c, startMonth){
+    let pm = prevMonth(startMonth);
+    // hard limit: no máximo 120 passos (~10 anos) para evitar travar celular
+    let guard = 0;
+
+    while(pm){
+      if(minMonth && pm < minMonth) return null;   // passou do mais antigo existente
+      if(hasAny(c, pm)) return pm;                 // achou mês com dados
+      pm = prevMonth(pm);
+      guard++;
+      if(guard > 120) return null;                 // segurança anti-freeze
+    }
+    return null;
+  }
 
   function calcTotalDisponivel(c, m){
     const k = key(c,m);
@@ -528,11 +554,9 @@ function computeSaldoAnterior(conta, month){
       .filter(l => l.tipo === "Receita" && l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
       .reduce((a,b)=>a+Number(b.valor||0),0);
 
-    // acha o mês anterior “com dados” (pula meses vazios)
-    let pm = prevMonth(m);
-    while(pm && !hasAny(c, pm)) pm = prevMonth(pm);
-
+    const pm = stepBackToMonthWithData(c, m);
     const saldoAnteriorAuto = pm ? calcTotalDisponivel(c, pm) : 0;
+
     const saldoAnteriorFinal = saldoAnteriorAuto + saldoAnteriorLancado;
 
     const receitas = Lm.filter(l =>
@@ -552,8 +576,7 @@ function computeSaldoAnterior(conta, month){
   }
 
   // saldo anterior do mês atual = total disponível do último mês anterior que tem dados
-  let pm = prevMonth(month);
-  while(pm && !hasAny(conta, pm)) pm = prevMonth(pm);
+  const pm = stepBackToMonthWithData(conta, month);
   return pm ? calcTotalDisponivel(conta, pm) : 0;
 }
 
