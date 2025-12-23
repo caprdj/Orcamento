@@ -559,17 +559,14 @@ function computeSaldoAnterior(conta, month){
 
     const saldoAnteriorFinal = saldoAnteriorAuto + saldoAnteriorLancado;
 
-    const receitas = Lm.filter(l =>
-      (l.tipo === "Receita" || (l.tipo === "Transferência" && c === "Banco do Brasil")) &&
-      !(l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
-    );
-    const totalRec = receitas.reduce((a,b)=>a+Number(b.valor||0),0);
+const receitas = Lm.filter(l =>
+  l.tipo === "Receita" &&
+  !(l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
+);
+const totalRec = receitas.reduce((a,b)=>a+Number(b.valor||0),0);
 
-    const despesas = Lm.filter(l =>
-      l.tipo === "Despesa" || (l.tipo === "Transferência" && c === "Bradesco")
-    );
-    const totalDes = despesas.reduce((a,b)=>a+Number(b.valor||0),0);
-
+const despesas = Lm.filter(l => l.tipo === "Despesa");
+const totalDes = despesas.reduce((a,b)=>a+Number(b.valor||0),0);
     const totalDisponivel = saldoAnteriorFinal + totalRec - totalDes;
     cache[k] = totalDisponivel;
     return totalDisponivel;
