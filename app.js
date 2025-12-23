@@ -739,7 +739,7 @@ const receitas = LM.filter(l =>
           <div class="row"><span>Salário</span><span>${money(receitas.filter(x=>x.categoria==="Renda" && x.subcategoria==="Salário").reduce((a,b)=>a+Number(b.valor||0),0))}</span></div>
           <div class="row"><span>13°</span><span>${money(receitas.filter(x=>x.categoria==="Renda" && x.subcategoria==="13°").reduce((a,b)=>a+Number(b.valor||0),0))}</span></div>
           <div class="row"><span>Férias</span><span>${money(receitas.filter(x=>x.categoria==="Renda" && x.subcategoria==="Férias").reduce((a,b)=>a+Number(b.valor||0),0))}</span></div>
-          <div class="row"><span>Outros</span><span>${money(receitas.filter(x=>!(x.categoria==="Renda" && ["Salário","13°","Férias"].includes(x.subcategoria))).reduce((a,b)=>a+Number(b.valor||0),0))}</span></div>
+          <div class="row"><span>Outros</span><span>${money(receitas.filter(x=>!(x.categoria==="Renda" && ["Salário","13°","Férias","Saldo anterior"].includes(x.subcategoria))).reduce((a,b)=>a+Number(b.valor||0),0))}</span></div>
         ` : `
           <div class="row"><span>Outros</span><span>${money(totalRec)}</span></div>
           <div class="row"><span>Ações</span><span>${money(receitas.filter(x=>x.subcategoria==="Ações").reduce((a,b)=>a+Number(b.valor||0),0))}</span></div>
