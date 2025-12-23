@@ -508,26 +508,49 @@ function renderLancList(list){
 }
 
 function computeSaldoAnterior(conta, month){
-  // saldo anterior automático = (receitas - despesas) do mês anterior, sem "Saldo anterior" manual
   const data = loadData();
+  const cache = computeSaldoAnterior._cache || (computeSaldoAnterior._cache = {});
+
+  function key(c,m){ return `${c}__${m}`; }
+
+  function calcTotalDisponivel(c, m){
+    const k = key(c,m);
+    if(cache[k] != null) return cache[k];
+
+    const pm = prevMonth(m);
+    const Lm = data.lancamentos.filter(l => l.competencia === m && l.conta === c && l.conta !== "Cartão");
+
+    // saldo anterior LANÇADO manualmente no próprio mês (Renda > Saldo anterior)
+    const saldoAnteriorLancado = Lm
+      .filter(l => l.tipo === "Receita" && l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
+      .reduce((a,b)=>a+Number(b.valor||0),0);
+
+    // saldo anterior AUTOMÁTICO (vem do mês anterior, encadeado)
+    const saldoAnteriorAuto = pm ? calcTotalDisponivel(c, pm) : 0;
+
+    const saldoAnteriorFinal = saldoAnteriorAuto + saldoAnteriorLancado;
+
+    // receitas do mês (exclui "Saldo anterior" porque já entrou no saldoAnteriorFinal)
+    const receitas = Lm.filter(l =>
+      (l.tipo === "Receita" || (l.tipo === "Transferência" && c === "Banco do Brasil")) &&
+      !(l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
+    );
+    const totalRec = receitas.reduce((a,b)=>a+Number(b.valor||0),0);
+
+    // despesas do mês (inclui transferência saindo do Bradesco)
+    const despesas = Lm.filter(l =>
+      l.tipo === "Despesa" || (l.tipo === "Transferência" && c === "Bradesco")
+    );
+    const totalDes = despesas.reduce((a,b)=>a+Number(b.valor||0),0);
+
+    const totalDisponivel = saldoAnteriorFinal + totalRec - totalDes;
+    cache[k] = totalDisponivel;
+    return totalDisponivel;
+  }
+
+  // saldo anterior do mês atual = total disponível do mês anterior
   const pm = prevMonth(month);
-
-  const L = (Array.isArray(data.lancamentos) ? data.lancamentos : []).filter(l =>
-    l.conta === conta &&
-    l.competencia === pm &&
-    l.conta !== "Cartão"
-  );
-
-  const receitas = L.filter(l =>
-    l.tipo === "Receita" &&
-    !(l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
-  );
-  const despesas = L.filter(l => l.tipo === "Despesa");
-
-  const totalRec = receitas.reduce((a,b)=>a+Number(b.valor||0),0);
-  const totalDes = despesas.reduce((a,b)=>a+Number(b.valor||0),0);
-
-  return totalRec - totalDes;
+  return pm ? calcTotalDisponivel(conta, pm) : 0;
 }
 
 function renderMes(){
