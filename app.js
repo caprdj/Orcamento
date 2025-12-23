@@ -13,8 +13,6 @@ function ymNow(){
   return `${y}-${m}`;
 }
 
-
-
 function todayISO(){
   return new Date().toISOString().slice(0,10);
 }
@@ -22,6 +20,7 @@ function todayISO(){
 /* =========================
    INVEST HELPERS
 ========================= */
+
 function escapeHTML(str){
   return String(str ?? "")
     .replaceAll("&","&amp;")
@@ -63,8 +62,11 @@ function investKindFromAsset(name){
   // FIIs brasileiros quase sempre terminam em 11 (ex.: KNCR11)
   if(/11$/.test(x)) return "FII";
   // Poupanças/objetivos: nomes livres
-  if(x.startsWith("POUP") || x.startsWith("PREV") || x.startsWith("81-") || x.startsWith("82-") || x.startsWith("83-") || x.startsWith("84-") ||
-     x.includes("VIAGEM") || x.includes("REFORMA") || x.includes("CARRO") || x.includes("IPTU")) return "Poupança";
+  if(
+    x.startsWith("POUP") || x.startsWith("PREV") ||
+    x.startsWith("81-") || x.startsWith("82-") || x.startsWith("83-") || x.startsWith("84-") ||
+    x.includes("VIAGEM") || x.includes("REFORMA") || x.includes("CARRO") || x.includes("IPTU")
+  ) return "Poupança";
   return "Ação";
 }
 
@@ -112,8 +114,6 @@ function ensureInvestDefaults(){
   setCats(cats);
 }
 
-
-
 function fmtDate(iso){
   if(!iso) return "";
   const s = String(iso).trim();
@@ -142,7 +142,6 @@ function money(v){
   const n = Number(v||0);
   return n.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 }
-
 
 function accountTagClass(conta){
   if(conta === "Bradesco") return "brad";
@@ -280,7 +279,6 @@ function reopenCardStatement(){
   renderMes();
 }
 
-
 /* =========================
    STORAGE WRAPPER (storage.js)
 ========================= */
@@ -365,9 +363,17 @@ function updateLaunchUI(){
   if(tipoSel){
     if(isInvest){
       tipoSel.disabled = true;
-      const mv = mov?.value || "saida";
-      if(mv === "entrada" || mv === "ajuste+") tipoSel.value = "Receita";
-      else if(mv === "saida" || mv === "ajuste-") tipoSel.value = "Despesa";
+
+      // ✅ valores novos
+      const mv = (mov?.value || "aplic").trim().toLowerCase();
+
+      if(mv === "rend" || mv === "retir" || mv === "ajuste+") tipoSel.value = "Receita";
+      else if(mv === "aplic" || mv === "ajuste-") tipoSel.value = "Despesa";
+      else {
+        // compat antigo
+        if(mv === "entrada") tipoSel.value = "Receita";
+        else if(mv === "saida") tipoSel.value = "Despesa";
+      }
     }else{
       tipoSel.disabled = false;
     }
@@ -510,15 +516,16 @@ function salvarLancamento(){
 
   saveData(data);
 
-  document.getElementById("valor").value = "";
-  document.getElementById("descricao").value = "";
+  const vEl = document.getElementById("valor");
+  const dEl = document.getElementById("descricao");
+  if(vEl) vEl.value = "";
+  if(dEl) dEl.value = "";
 
   renderMes();
   renderCartao();
   renderInvestimentos();
   alert("Salvo!");
 }
-
 
 /* =========================
    MÊS
@@ -616,7 +623,6 @@ function renderBars(title, entries){
   `;
 }
 
-
 function renderLancList(list){
   return list
     .slice()
@@ -624,18 +630,18 @@ function renderLancList(list){
     .map(l=>`
     <div class="card" style="margin:10px 0; box-shadow:none">
       <div class="tags">
-  <span class="tag ${accountTagClass(l.conta)}">${l.conta}</span>
-  <span class="tag ${
-    l.tipo==="Receita" ? "in" :
-    (l.tipo==="Despesa" || l.tipo==="Assinatura") ? "out" : "trf"
-  }">${l.tipo}</span>
-  <span class="muted" style="font-weight:800">
-    ${l.categoria} • ${l.subcategoria}${l.data ? ` • ${fmtDate(l.data)}` : ""}
-  </span>
-  <span style="margin-left:auto;font-weight:900">
-    ${money(l.valor)}
-  </span>
-</div>
+        <span class="tag ${accountTagClass(l.conta)}">${l.conta}</span>
+        <span class="tag ${
+          l.tipo==="Receita" ? "in" :
+          (l.tipo==="Despesa" || l.tipo==="Assinatura") ? "out" : "trf"
+        }">${l.tipo}</span>
+        <span class="muted" style="font-weight:800">
+          ${l.categoria} • ${l.subcategoria}${l.data ? ` • ${fmtDate(l.data)}` : ""}
+        </span>
+        <span style="margin-left:auto;font-weight:900">
+          ${money(l.valor)}
+        </span>
+      </div>
 
       <div class="muted" style="margin-top:8px">${(l.descricao||"—")}</div>
       <div style="display:flex;justify-content:space-between;margin-top:10px;gap:8px">
@@ -651,17 +657,16 @@ function computeSaldoAnterior(conta, month){
   const pm = prevMonth(month);
 
   const receitas = data.lancamentos.filter(l =>
-  l.conta === conta &&
-  l.competencia === pm &&
-  (l.tipo === "Receita" || (l.tipo === "Transferência" && conta === "Banco do Brasil"))
-);
+    l.conta === conta &&
+    l.competencia === pm &&
+    (l.tipo === "Receita" || (l.tipo === "Transferência" && conta === "Banco do Brasil"))
+  );
 
-const despesas = data.lancamentos.filter(l =>
-  l.conta === conta &&
-  l.competencia === pm &&
-  (l.tipo === "Despesa" || (l.tipo === "Transferência" && conta === "Bradesco"))
-);
-
+  const despesas = data.lancamentos.filter(l =>
+    l.conta === conta &&
+    l.competencia === pm &&
+    (l.tipo === "Despesa" || (l.tipo === "Transferência" && conta === "Bradesco"))
+  );
 
   // Cartão não entra aqui; já está isolado na aba Cartão.
   const totalRec = receitas.reduce((a,b)=>a+Number(b.valor||0),0);
@@ -685,34 +690,34 @@ function renderMes(){
   // Importante: cartão não mistura com mês
   const LM = L.filter(l => l.conta === conta && l.conta !== "Cartão");
 
+  // Saldo anterior lançado manualmente (Renda > Saldo anterior)
+  const saldoAnteriorLancado = LM
+    .filter(l => l.tipo === "Receita" && l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
+    .reduce((a,b)=>a+Number(b.valor||0),0);
 
-   // Saldo anterior lançado manualmente (Renda > Saldo anterior)
-const saldoAnteriorLancado = LM
-  .filter(l => l.tipo === "Receita" && l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
-  .reduce((a,b)=>a+Number(b.valor||0),0);
+  // Saldo anterior automático (fluxo do mês anterior)
+  const saldoAnteriorAuto = computeSaldoAnterior(conta, month);
 
-// Saldo anterior automático (fluxo do mês anterior)
-const saldoAnteriorAuto = computeSaldoAnterior(conta, month);
+  // ✅ saldo anterior final (auto + lançado)
+  const saldoAnterior = saldoAnteriorAuto + saldoAnteriorLancado;
 
-// ✅ saldo anterior final (auto + lançado)
-const saldoAnterior = saldoAnteriorAuto + saldoAnteriorLancado;
+  // Receitas do mês (exceto "Saldo anterior" lançado, que já entrou em saldoAnterior)
+  const receitas = LM.filter(l =>
+    (
+      l.tipo === "Receita" ||
+      (l.tipo === "Transferência" && conta === "Banco do Brasil")
+    ) &&
+    !(l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
+  );
 
-  
-// Receitas do mês (exceto "Saldo anterior" lançado, que já entrou em saldoAnterior)
-const receitas = LM.filter(l =>
-  (
-    l.tipo === "Receita" ||
-    (l.tipo === "Transferência" && conta === "Banco do Brasil")
-  ) &&
-  !(l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
-);
-  
+  // ✅ CORREÇÃO: faltava totalRec (isso quebrava a aba mês)
+  const totalRec = receitas.reduce((a,b)=>a+Number(b.valor||0),0);
 
   // Despesas do mês (Despesa/Transferência)
   const despesas = LM.filter(l =>
-  l.tipo === "Despesa" ||
-  (l.tipo === "Transferência" && conta === "Bradesco") // ✅ sai do Bradesco
-);
+    l.tipo === "Despesa" ||
+    (l.tipo === "Transferência" && conta === "Bradesco") // ✅ sai do Bradesco
+  );
   const totalDes = despesas.reduce((a,b)=>a+Number(b.valor||0),0);
 
   const totalDisponivel = saldoAnterior + totalRec - totalDes;
@@ -722,7 +727,6 @@ const receitas = LM.filter(l =>
 
   const bankClass = conta==="Bradesco" ? "bank-brad" : "bank-bb";
   const bankLabelClass = conta==="Bradesco" ? "brad-text" : "bb-text";
-  const tagClass = conta==="Bradesco" ? "brad" : "bb";
 
   dash.innerHTML = `
     <div class="bankcard ${bankClass}">
@@ -735,12 +739,16 @@ const receitas = LM.filter(l =>
 
       <div class="bankcard ${bankClass}" style="box-shadow:none;margin-top:10px">
         <div class="row"><span>Saldo anterior</span><span>${money(saldoAnterior)}</span></div>
+
         ${conta==="Bradesco" ? `
           <div class="row"><span>Salário</span><span>${money(receitas.filter(x=>x.categoria==="Renda" && x.subcategoria==="Salário").reduce((a,b)=>a+Number(b.valor||0),0))}</span></div>
           <div class="row"><span>13°</span><span>${money(receitas.filter(x=>x.categoria==="Renda" && x.subcategoria==="13°").reduce((a,b)=>a+Number(b.valor||0),0))}</span></div>
           <div class="row"><span>Férias</span><span>${money(receitas.filter(x=>x.categoria==="Renda" && x.subcategoria==="Férias").reduce((a,b)=>a+Number(b.valor||0),0))}</span></div>
-          <div class="row"><span>Saldo anterior</span><span>${money(receitas.filter(x=>x.categoria==="Renda" && x.subcategoria==="Saldo anterior").reduce((a,b)=>a+Number(b.valor||0),0))}</span></div>
-          <div class="row"><span>Outros</span><span>${money(receitas.filter(x=>!(x.categoria==="Renda" && ["Salário","13°","Férias","Saldo anterior"].includes(x.subcategoria))).reduce((a,b)=>a+Number(b.valor||0),0))}</span></div>
+
+          <div class="row"><span>Outros</span><span>${money(
+            receitas.filter(x=>!(x.categoria==="Renda" && ["Salário","13°","Férias","Saldo anterior"].includes(x.subcategoria)))
+              .reduce((a,b)=>a+Number(b.valor||0),0)
+          )}</span></div>
         ` : `
           <div class="row"><span>Outros</span><span>${money(totalRec)}</span></div>
           <div class="row"><span>Ações</span><span>${money(receitas.filter(x=>x.subcategoria==="Ações").reduce((a,b)=>a+Number(b.valor||0),0))}</span></div>
@@ -781,7 +789,6 @@ function getInvestSaldoAnterior(month){
 
   return saldo;
 }
-
 
 function renderInvestimentos(){
   const data = StorageAPI.load();
@@ -911,7 +918,6 @@ function renderInvestimentos(){
     </details>
   `;
 }
-
 
 /* =========================
    CARTÃO (gastos + assinaturas)
@@ -1314,22 +1320,22 @@ function editSubscription(id){
   if(dueDayRaw === null) return;
   const dueDay = Math.min(Math.max(1, Number(dueDayRaw||1)), 31);
 
-// guarda histórico para evitar duplicações em meses antigos (lançamentos legados sem id)
-sub.aliases = Array.isArray(sub.aliases) ? sub.aliases : [];
-sub.valuesHistory = Array.isArray(sub.valuesHistory) ? sub.valuesHistory : [];
+  // guarda histórico para evitar duplicações em meses antigos (lançamentos legados sem id)
+  sub.aliases = Array.isArray(sub.aliases) ? sub.aliases : [];
+  sub.valuesHistory = Array.isArray(sub.valuesHistory) ? sub.valuesHistory : [];
 
-const oldName = String(sub.name || "").trim();
-const oldVal  = Number(sub.valor || 0);
+  const oldName = String(sub.name || "").trim();
+  const oldVal  = Number(sub.valor || 0);
 
-if(oldName){
-  const key = normLower(oldName);
-  if(key && !sub.aliases.some(a => normLower(a) === key)){
-    sub.aliases.push(oldName);
+  if(oldName){
+    const key = normLower(oldName);
+    if(key && !sub.aliases.some(a => normLower(a) === key)){
+      sub.aliases.push(oldName);
+    }
   }
-}
-if(isFinite(oldVal) && !sub.valuesHistory.some(v => Number(v) === oldVal)){
-  sub.valuesHistory.push(oldVal);
-}
+  if(isFinite(oldVal) && !sub.valuesHistory.some(v => Number(v) === oldVal)){
+    sub.valuesHistory.push(oldVal);
+  }
 
   sub.name = String(name).trim();
   sub.valor = valor;
@@ -1539,8 +1545,6 @@ function renderCartao(){
   `;
 }
 
-
-
 /* =========================
    EDIT / DELETE
 ========================= */
@@ -1556,7 +1560,6 @@ function editLancamento(id){
     return;
   }
 
-
   const dtRaw = prompt("Data (AAAA-MM-DD ou DD/MM/AAAA):", l.data || "");
   const dt = normalizeDateInput(dtRaw);
   if(dt === null) return; // cancel
@@ -1568,7 +1571,7 @@ function editLancamento(id){
 
   const desc = prompt("Descrição:", l.descricao||"") ?? (l.descricao||"");
 
-    const cats = getCats();
+  const cats = getCats();
 
   // trava conta/categoria quando for Investimentos
   let cat = l.categoria;
@@ -1582,13 +1585,7 @@ function editLancamento(id){
   }
 
   l.valor = valor;
-  l.descricao = desc.trim();
-  l.categoria = cat;
-  l.subcategoria = sub;
-
-
-  l.valor = valor;
-  l.descricao = desc.trim();
+  l.descricao = String(desc || "").trim();
   l.categoria = cat;
   l.subcategoria = sub;
 
