@@ -1646,8 +1646,14 @@ function openCats(){
   });
 
   // botões de ação (se existirem)
-  const btnSave = document.getElementById("btnSalvar");
-  if(btnSave) btnSave.onclick = salvarLancamento;
+  // botão salvar lançamento (btn secondary)
+const btnSave =
+  document.getElementById("btnSalvar") ||
+  document.querySelector("#view-lancar .btn.secondary");
+
+if(btnSave){
+  btnSave.onclick = salvarLancamento;
+}
 
   const btnExport = document.getElementById("btnExport");
   if(btnExport) btnExport.onclick = exportExcel;
