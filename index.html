@@ -638,6 +638,307 @@ input:disabled,select:disabled{opacity:.75}
   document.addEventListener("DOMContentLoaded", init);
 })();
 </script>
+<script>
+/* =========================
+   PATCH: Aba INVEST (failsafe)
+   - Não altera outras abas
+   - Tenta achar automaticamente os lançamentos no localStorage
+========================= */
+(function(){
+  const $ = (sel) => document.querySelector(sel);
 
+  function money(n){
+    const v = Number(n || 0);
+    return v.toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+  }
+
+  function asMonth(v){
+    // input type="month" => "YYYY-MM"
+    if (!v) return null;
+    const m = String(v).trim();
+    return /^\d{4}-\d{2}$/.test(m) ? m : null;
+  }
+
+  function safeParseJSON(s){
+    try { return JSON.parse(s); } catch { return null; }
+  }
+
+  function isObj(x){ return x && typeof x === 'object' && !Array.isArray(x); }
+
+  function pickTransactionsFromAnyStorage(){
+    // Heurística para achar lista de lançamentos no localStorage
+    // Procura: array de objetos com cara de lançamento OU objeto com propriedade lançamentos/transações.
+    let best = null;
+
+    for (let i=0; i<localStorage.length; i++){
+      const k = localStorage.key(i);
+      const raw = localStorage.getItem(k);
+      if (!raw || raw.length < 2) continue;
+
+      const data = safeParseJSON(raw);
+      if (!data) continue;
+
+      // Caso 1: objeto com propriedade lançamentos/transações
+      if (isObj(data)){
+        const candidates = [
+          data.lancamentos, data.lancamento, data.transacoes, data.transacao,
+          data.transactions, data.transaction, data.entries, data.entry
+        ].filter(Boolean);
+
+        for (const c of candidates){
+          if (Array.isArray(c) && c.length){
+            const score = scoreTxArray(c);
+            if (!best || score > best.score) best = { key:k, arr:c, score };
+          }
+        }
+      }
+
+      // Caso 2: o próprio storage é um array
+      if (Array.isArray(data) && data.length){
+        const score = scoreTxArray(data);
+        if (!best || score > best.score) best = { key:k, arr:data, score };
+      }
+    }
+
+    return best ? best.arr : [];
+  }
+
+  function scoreTxArray(arr){
+    // pontua se objetos têm campos típicos: conta/categoria/competencia/valor/tipo
+    const sample = arr.slice(0, Math.min(12, arr.length)).filter(isObj);
+    if (!sample.length) return 0;
+
+    const has = (o, ks) => ks.some(k => k in o);
+    let score = 0;
+
+    for (const o of sample){
+      if (has(o, ['conta','account','bank'])) score += 3;
+      if (has(o, ['categoria','category'])) score += 3;
+      if (has(o, ['subcategoria','subcategory'])) score += 1;
+      if (has(o, ['competencia','month','mes'])) score += 3;
+      if (has(o, ['valor','value','amount'])) score += 3;
+      if (has(o, ['tipo','type'])) score += 1;
+      if (has(o, ['investKind','investTipo','movimento','mov'])) score += 2;
+    }
+
+    // bônus se parecer “grande o suficiente”
+    score += Math.min(5, Math.floor(arr.length / 50));
+    return score;
+  }
+
+  function normStr(x){
+    return String(x ?? '').trim().toLowerCase();
+  }
+
+  function getField(o, names){
+    for (const n of names){
+      if (o && (n in o)) return o[n];
+    }
+    return undefined;
+  }
+
+  function matchesBBAccount(acc){
+    const a = normStr(acc);
+    // cobre variações comuns
+    return (
+      a.includes('banco do brasil') ||
+      a === 'bb' ||
+      a.includes(' banco do brasil') ||
+      a.includes('b.b.') ||
+      a.includes('bdb')
+    );
+  }
+
+  function matchesInvestCategory(cat){
+    const c = normStr(cat);
+    return c === 'investimentos' || c.includes('invest');
+  }
+
+  function monthOf(o){
+    // tenta encontrar competência: "YYYY-MM"
+    const m =
+      getField(o, ['competencia','month','mes']) ??
+      getField(o, ['competência']); // caso tenha acento
+    const s = String(m ?? '').trim();
+
+    // já vem YYYY-MM
+    if (/^\d{4}-\d{2}$/.test(s)) return s;
+
+    // tenta extrair de data real "YYYY-MM-DD"
+    const d = getField(o, ['dataReal','data','date']);
+    const ds = String(d ?? '').trim();
+    const m2 = ds.match(/^(\d{4})-(\d{2})/);
+    if (m2) return `${m2[1]}-${m2[2]}`;
+
+    return null;
+  }
+
+  function valueOf(o){
+    const v = getField(o, ['valor','value','amount']);
+    const n = Number(String(v ?? '0').replace(/\./g,'').replace(',','.'));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function investKindOf(o){
+    // APLIC / REND / RETIR / AJ+ / AJ-
+    const k = getField(o, ['investKind','investTipo','movimento','mov']);
+    return String(k ?? '').trim().toUpperCase();
+  }
+
+  function renderInvest(){
+    const host = $('#invest-view');
+    if (!host) return;
+
+    // garante mês default
+    const monthEl = $('#invest-month');
+    if (monthEl && !monthEl.value){
+      const now = new Date();
+      const mm = String(now.getMonth()+1).padStart(2,'0');
+      monthEl.value = `${now.getFullYear()}-${mm}`;
+    }
+    const selectedMonth = asMonth(monthEl ? monthEl.value : null);
+
+    // pega lançamentos de onde estiverem
+    const all = pickTransactionsFromAnyStorage();
+
+    // filtra invest do BB
+    let rows = all.filter(isObj).filter(o => {
+      const acc = getField(o, ['conta','account','bank']);
+      const cat = getField(o, ['categoria','category']);
+      if (!matchesBBAccount(acc)) return false;
+      if (!matchesInvestCategory(cat)) return false;
+      if (selectedMonth){
+        const m = monthOf(o);
+        if (m !== selectedMonth) return false;
+      }
+      return true;
+    });
+
+    // ordena por data (se existir), senão mantém
+    rows = rows.slice().sort((a,b)=>{
+      const da = String(getField(a,['dataReal','data','date']) ?? '');
+      const db = String(getField(b,['dataReal','data','date']) ?? '');
+      return da.localeCompare(db);
+    });
+
+    // totais (se tiver investKind, usa; senão: tudo soma como “movimento”)
+    let total = 0, aplic = 0, rend = 0, retir = 0, ajPos = 0, ajNeg = 0;
+
+    for (const o of rows){
+      const v = valueOf(o);
+      const k = investKindOf(o);
+
+      if (k === 'APLIC' || k === 'APLICAÇÃO' || k === 'APLICACAO'){
+        aplic += Math.abs(v);
+        total += Math.abs(v);
+      } else if (k === 'REND' || k === 'PROVENTO' || k === 'DIVIDENDO'){
+        rend += Math.abs(v);
+        total += Math.abs(v);
+      } else if (k === 'RETIR' || k === 'RESGATE' || k === 'VENDA'){
+        retir += Math.abs(v);
+        total -= Math.abs(v);
+      } else if (k === 'AJUSTE (+)' || k === 'AJ+' || k === 'AJPOS'){
+        ajPos += Math.abs(v);
+        total += Math.abs(v);
+      } else if (k === 'AJUSTE (-)' || k === 'AJ-' || k === 'AJNEG'){
+        ajNeg += Math.abs(v);
+        total -= Math.abs(v);
+      } else {
+        // fallback: se não tiver tipo, soma “como veio”
+        total += v;
+      }
+    }
+
+    // HTML
+    const monthLabel = selectedMonth ? selectedMonth : '(sem mês selecionado)';
+    host.innerHTML = `
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:stretch; margin-bottom:10px">
+        <div style="flex:1; min-width:160px; padding:10px; border:1px solid var(--border,#ddd); border-radius:12px; background:var(--card,#fff)">
+          <div style="font-size:12px; opacity:.75">Mês</div>
+          <div style="font-weight:700">${monthLabel}</div>
+        </div>
+        <div style="flex:1; min-width:160px; padding:10px; border:1px solid var(--border,#ddd); border-radius:12px; background:var(--card,#fff)">
+          <div style="font-size:12px; opacity:.75">Saldo (fluxo)</div>
+          <div style="font-weight:800">${money(total)}</div>
+        </div>
+        <div style="flex:1; min-width:160px; padding:10px; border:1px solid var(--border,#ddd); border-radius:12px; background:var(--card,#fff)">
+          <div style="font-size:12px; opacity:.75">Aplicações</div>
+          <div style="font-weight:700">${money(aplic)}</div>
+        </div>
+        <div style="flex:1; min-width:160px; padding:10px; border:1px solid var(--border,#ddd); border-radius:12px; background:var(--card,#fff)">
+          <div style="font-size:12px; opacity:.75">Rendimentos</div>
+          <div style="font-weight:700">${money(rend)}</div>
+        </div>
+        <div style="flex:1; min-width:160px; padding:10px; border:1px solid var(--border,#ddd); border-radius:12px; background:var(--card,#fff)">
+          <div style="font-size:12px; opacity:.75">Resgates</div>
+          <div style="font-weight:700">${money(retir)}</div>
+        </div>
+      </div>
+
+      <div style="font-size:12px; opacity:.8; margin:6px 0 10px 0">
+        Itens: <b>${rows.length}</b> (Conta=BB, Categoria=Investimentos)
+      </div>
+
+      <div style="overflow:auto; border:1px solid var(--border,#ddd); border-radius:12px">
+        <table style="width:100%; border-collapse:collapse; font-size:14px">
+          <thead>
+            <tr style="background:rgba(0,0,0,.03)">
+              <th style="text-align:left; padding:10px; white-space:nowrap">Data</th>
+              <th style="text-align:left; padding:10px; white-space:nowrap">Tipo</th>
+              <th style="text-align:left; padding:10px">Descrição</th>
+              <th style="text-align:right; padding:10px; white-space:nowrap">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              rows.map(o=>{
+                const d = getField(o,['dataReal','data','date']) ?? '';
+                const k = investKindOf(o) || (getField(o,['tipo','type']) ?? '');
+                const desc = getField(o,['descricao','desc','description']) ?? '';
+                const v = valueOf(o);
+                return `
+                  <tr style="border-top:1px solid rgba(0,0,0,.06)">
+                    <td style="padding:10px; white-space:nowrap">${String(d)}</td>
+                    <td style="padding:10px; white-space:nowrap">${String(k)}</td>
+                    <td style="padding:10px">${String(desc)}</td>
+                    <td style="padding:10px; text-align:right; white-space:nowrap">${money(v)}</td>
+                  </tr>
+                `;
+              }).join('')
+              || `<tr><td colspan="4" style="padding:12px; opacity:.75">Nenhum lançamento de investimento encontrado para este mês.</td></tr>`
+            }
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // Re-render quando mudar o mês
+  document.addEventListener('change', (e)=>{
+    if (e.target && e.target.id === 'invest-month'){
+      renderInvest();
+    }
+  });
+
+  // Hook no showView existente (sem quebrar o original)
+  const originalShowView = window.showView;
+  if (typeof originalShowView === 'function'){
+    window.showView = function(view){
+      const r = originalShowView.apply(this, arguments);
+      if (String(view).toLowerCase() === 'invest'){
+        try { renderInvest(); } catch (err) {
+          const host = $('#invest-view');
+          if (host) host.innerHTML = `<div style="padding:10px">Erro ao renderizar Invest: <pre style="white-space:pre-wrap">${String(err)}</pre></div>`;
+          console.error(err);
+        }
+      }
+      return r;
+    };
+  } else {
+    // se showView não existir por algum motivo, tenta renderizar mesmo assim quando a página carregar
+    window.addEventListener('load', ()=>{ try{ renderInvest(); }catch(e){} });
+  }
+})();
+</script>
 </body>
 </html>
