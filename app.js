@@ -54,7 +54,7 @@ function money(v){
 }
 function prevMonth(ym){
   const [y,m] = String(ym||"").split("-").map(Number);
-  if(!y || !m) return ymNow();
+  if(!y || !m) return null; // <— era ymNow()
   const d = new Date(y, m-1, 1);
   d.setMonth(d.getMonth()-1);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
@@ -509,35 +509,38 @@ function renderLancList(list){
 
 function computeSaldoAnterior(conta, month){
   const data = loadData();
-  const cache = computeSaldoAnterior._cache || (computeSaldoAnterior._cache = {});
+  data.lancamentos = Array.isArray(data.lancamentos) ? data.lancamentos : [];
 
-  function key(c,m){ return `${c}__${m}`; }
+  const cache = computeSaldoAnterior._cache || (computeSaldoAnterior._cache = {});
+  const key = (c,m)=> `${c}__${m}`;
+
+  const hasAny = (c,m)=> data.lancamentos.some(l =>
+    l.conta === c && l.conta !== "Cartão" && l.competencia === m
+  );
 
   function calcTotalDisponivel(c, m){
     const k = key(c,m);
     if(cache[k] != null) return cache[k];
 
-    const pm = prevMonth(m);
     const Lm = data.lancamentos.filter(l => l.competencia === m && l.conta === c && l.conta !== "Cartão");
 
-    // saldo anterior LANÇADO manualmente no próprio mês (Renda > Saldo anterior)
     const saldoAnteriorLancado = Lm
       .filter(l => l.tipo === "Receita" && l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
       .reduce((a,b)=>a+Number(b.valor||0),0);
 
-    // saldo anterior AUTOMÁTICO (vem do mês anterior, encadeado)
-    const saldoAnteriorAuto = pm ? calcTotalDisponivel(c, pm) : 0;
+    // acha o mês anterior “com dados” (pula meses vazios)
+    let pm = prevMonth(m);
+    while(pm && !hasAny(c, pm)) pm = prevMonth(pm);
 
+    const saldoAnteriorAuto = pm ? calcTotalDisponivel(c, pm) : 0;
     const saldoAnteriorFinal = saldoAnteriorAuto + saldoAnteriorLancado;
 
-    // receitas do mês (exclui "Saldo anterior" porque já entrou no saldoAnteriorFinal)
     const receitas = Lm.filter(l =>
       (l.tipo === "Receita" || (l.tipo === "Transferência" && c === "Banco do Brasil")) &&
       !(l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
     );
     const totalRec = receitas.reduce((a,b)=>a+Number(b.valor||0),0);
 
-    // despesas do mês (inclui transferência saindo do Bradesco)
     const despesas = Lm.filter(l =>
       l.tipo === "Despesa" || (l.tipo === "Transferência" && c === "Bradesco")
     );
@@ -548,8 +551,9 @@ function computeSaldoAnterior(conta, month){
     return totalDisponivel;
   }
 
-  // saldo anterior do mês atual = total disponível do mês anterior
-  const pm = prevMonth(month);
+  // saldo anterior do mês atual = total disponível do último mês anterior que tem dados
+  let pm = prevMonth(month);
+  while(pm && !hasAny(conta, pm)) pm = prevMonth(pm);
   return pm ? calcTotalDisponivel(conta, pm) : 0;
 }
 
