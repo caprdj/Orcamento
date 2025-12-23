@@ -8,13 +8,7 @@ function uid(){
 
 function ymNow(){
   const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,"0");
-  return `${y}-${m}`;
-}
-
-function todayISO(){
-  return new Date().toISOString().slice(0,10);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
 }
 
 function money(v){
@@ -29,14 +23,23 @@ function prevMonth(ym){
 }
 
 /* =========================
-   STORAGE
+   STORAGE SAFE
 ========================= */
 
-function loadData(){ return window.StorageAPI.load(); }
-function saveData(d){ window.StorageAPI.save(d); }
+function loadData(){
+  const d = window.StorageAPI?.load();
+  if(!d || !Array.isArray(d.lancamentos)){
+    return { lancamentos: [] };
+  }
+  return d;
+}
+
+function saveData(d){
+  window.StorageAPI?.save(d);
+}
 
 /* =========================
-   SALDO ANTERIOR (FIX DEFINITIVO)
+   SALDO ANTERIOR (CORRETO)
 ========================= */
 
 function computeSaldoAnterior(conta, month){
@@ -65,11 +68,15 @@ function computeSaldoAnterior(conta, month){
 }
 
 /* =========================
-   MÊS
+   ESTADO GLOBAL
 ========================= */
 
 let currentMonth = ymNow();
 let currentBank = "Bradesco";
+
+/* =========================
+   MÊS (SEM TRAVAR)
+========================= */
 
 function renderMes(){
   const data = loadData();
@@ -92,7 +99,6 @@ function renderMes(){
 
   const saldoAnteriorAuto = computeSaldoAnterior(conta, month);
 
-  // REGRA FINAL
   const saldoAnterior = saldoAnteriorLancado>0
     ? saldoAnteriorLancado
     : saldoAnteriorAuto;
@@ -116,23 +122,28 @@ function renderMes(){
 
   dash.innerHTML = `
     <div class="row big"><span>${conta}</span><span>${month}</span></div>
-    <div class="row big"><span>Saldo anterior</span><span>${money(saldoAnterior)}</span></div>
-    <div class="row big"><span>Receitas</span><span>${money(totalRec)}</span></div>
-    <div class="row big"><span>Despesas</span><span>${money(totalDes)}</span></div>
+    <div class="row"><span>Saldo anterior</span><span>${money(saldoAnterior)}</span></div>
+    <div class="row"><span>Receitas</span><span>${money(totalRec)}</span></div>
+    <div class="row"><span>Despesas</span><span>${money(totalDes)}</span></div>
     <div class="row big"><b>Total disponível</b><b>${money(totalDisponivel)}</b></div>
   `;
 
   listEl.innerHTML = LM.length
-    ? LM.map(l=>`<div class="row"><span>${l.descricao||""}</span><span>${money(l.valor)}</span></div>`).join("")
+    ? LM.map(l=>`
+        <div class="row">
+          <span>${l.descricao||"(sem descrição)"}</span>
+          <span>${money(l.valor)}</span>
+        </div>
+      `).join("")
     : `<div class="muted">Sem lançamentos</div>`;
 }
 
 /* =========================
-   INIT
+   INIT SEGURO
 ========================= */
 
-(function(){
+document.addEventListener("DOMContentLoaded", ()=>{
   const comp = document.getElementById("competencia");
   if(comp) comp.value = currentMonth;
   renderMes();
-})();
+});
