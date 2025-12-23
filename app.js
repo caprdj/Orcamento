@@ -1657,6 +1657,7 @@ function openCats(){
 
 (function(){
   const data = loadData();
+
   if(!data.categories || !Object.keys(data.categories).length){
     setCats({
       "Renda":["Saldo anterior","Salário","13°","Férias","Outros"],
@@ -1672,6 +1673,17 @@ function openCats(){
       "Investimentos":["Ações","FII","Poupança","Previdência","Outros"]
     });
   }
+
+  // ✅ roda SEMPRE (mesmo com categorias antigas no localStorage)
+  (function ensureSaldoAnteriorInCats(){
+    const cats = getCats();
+    if (!cats["Renda"]) cats["Renda"] = ["Salário","13°","Férias","Outros"];
+
+    if (!cats["Renda"].includes("Saldo anterior")) {
+      cats["Renda"].unshift("Saldo anterior");
+      setCats(cats);
+    }
+  })();
 
   // Defaults
   currentMonth = ymNow();
