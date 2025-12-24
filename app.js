@@ -732,6 +732,49 @@ function renderInvestimentos(){
   `;
 }
 
+
+/* =========================
+   ASSINATURAS – CRUD BÁSICO
+========================= */
+function addSubscription(){
+  const data = loadData();
+  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+
+  const name = prompt("Nome da assinatura (ex: Netflix):");
+  if(!name) return;
+
+  const valor = Number(prompt("Valor mensal da assinatura:"));
+  if(!isFinite(valor) || valor <= 0){
+    alert("Valor inválido.");
+    return;
+  }
+
+  const categoria = prompt("Categoria:", "Cartão") || "Cartão";
+  const subcategoria = prompt("Subcategoria:", "Assinaturas") || "Assinaturas";
+
+  const startMonth = prompt("Mês inicial (AAAA-MM):", ymNow()) || ymNow();
+  const dueDay = Number(prompt("Dia de vencimento (1–28):", "1")) || 1;
+
+  data.subscriptions.push({
+    id: uid(),
+    name,
+    valor,
+    categoria,
+    subcategoria,
+    startMonth,
+    dueDay,
+    frequency: "mensal",
+    active: true
+  });
+
+  saveData(data);
+  alert("Assinatura cadastrada!");
+  renderCartao();
+}
+
+window.addSubscription = addSubscription;
+
+
 /* =========================
    CARTÃO — FECHAMENTO + ASSINATURAS (mantém suas IDs/estruturas)
    (Versão “safe”: não quebra se não existirem elementos)
