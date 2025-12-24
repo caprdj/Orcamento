@@ -66,6 +66,11 @@ function nextMonth(ym){
   d.setMonth(d.getMonth()+1);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
 }
+function nextMonthByOffset(ym, offset){
+  const [y,m] = ym.split("-").map(Number);
+  const d = new Date(y, m-1 + offset, 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+}
 function fmtDate(iso){
   if(!iso) return "";
   const s = String(iso).trim();
@@ -943,6 +948,14 @@ function salvarCartaoGasto(){
   const dataLanc = document.getElementById("card-date")?.value || todayISO();
   const descricao = document.getElementById("card-descricao")?.value || "";
 
+  const parcelas = Number(document.getElementById("card-parcelas")?.value || 1);
+const parcelaAtual = Number(document.getElementById("card-parcela-atual")?.value || 1);
+
+const valorParcela = valor / parcelas;
+
+for(let i = parcelaAtual; i <= parcelas; i++){
+  const comp = nextMonthByOffset(month, i - parcelaAtual);
+
   data.lancamentos.push({
     id: uid(),
     conta: "Cartão",
@@ -950,11 +963,15 @@ function salvarCartaoGasto(){
     categoria,
     subcategoria,
     investMov: "",
-    valor,
-    competencia: month,
+    valor: valorParcela,
+    competencia: comp,
     data: dataLanc,
-    descricao
+    descricao: `${descricao} (${i}/${parcelas})`,
+    parcelado: true,
+    parcelaAtual: i,
+    parcelas
   });
+}
 
   saveData(data);
 
