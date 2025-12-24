@@ -435,7 +435,17 @@ input:disabled,select:disabled{opacity:.75}
     <label>Valor</label>
     <input id="card-valor" type="number" step="0.01" />
 
-    <label>Descrição</label>
+    
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px">
+        <input type="checkbox" id="card-install" />
+        <span>Compra parcelada</span>
+      </label>
+      <div id="card-install-wrap" style="display:none; margin-top:8px">
+        <label>Nº de parcelas</label>
+        <input id="card-install-n" type="number" min="2" step="1" value="2" />
+        <div class="hint">O valor acima é o <b>valor da parcela</b>. O app cria 1 lançamento por mês: (1/N), (2/N)...</div>
+      </div>
+<label>Descrição</label>
     <input id="card-descricao" placeholder="Ex.: mercado, farmácia, app..." />
 
     <button class="btn secondary" type="button" id="btn-card-save" onclick="salvarCartaoGasto()">Salvar gasto do cartão</button>
