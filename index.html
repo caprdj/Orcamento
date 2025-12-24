@@ -435,22 +435,19 @@ input:disabled,select:disabled{opacity:.75}
     <label>Valor</label>
     <input id="card-valor" type="number" step="0.01" />
 
-    
-      <label style="display:flex;align-items:center;gap:8px;margin-top:8px">
-        <input type="checkbox" id="card-install" />
-        <span>Compra parcelada</span>
+    <div class="hint" style="margin-top:6px">Compra parcelada? Marque e informe o número de parcelas. (O valor informado será dividido igualmente.)</div>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:6px 0 2px 0">
+      <label style="display:flex; align-items:center; gap:8px; margin:0">
+        <input id="card-parcelado" type="checkbox" />
+        <span>Parcelado</span>
       </label>
-      <div id="card-install-wrap" style="display:none; margin-top:8px">
-        <label>Nº de parcelas</label>
-        <input id="card-install-n" type="number" min="2" step="1" value="2" />
-        <div class="hint">O valor acima é o <b>valor da parcela</b>. O app cria 1 lançamento por mês: (1/N), (2/N)...</div>
+      <div id="wrap-card-parcelas" style="display:none; align-items:center; gap:8px">
+        <span class="muted" style="font-weight:800">Parcelas</span>
+        <input id="card-parcelas" type="number" min="2" max="48" step="1" value="2" style="width:110px" />
       </div>
-  <label>Parcelas</label>
-<input id="card-parcelas" type="number" min="1" value="1" />
+    </div>
 
-<label>Parcela atual</label>
-<input id="card-parcela-atual" type="number" min="1" value="1" />
-<label>Descrição</label>
+    <label>Descrição</label>
     <input id="card-descricao" placeholder="Ex.: mercado, farmácia, app..." />
 
     <button class="btn secondary" type="button" id="btn-card-save" onclick="salvarCartaoGasto()">Salvar gasto do cartão</button>
