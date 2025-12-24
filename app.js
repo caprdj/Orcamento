@@ -1226,6 +1226,111 @@ function openCats(){
 }
 window.openCats = openCats;
 
+
+function renderSubscriptions(){
+  const data = loadData();
+  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+  const el = document.getElementById("subs-list");
+  if(!el) return;
+
+  if(!data.subscriptions.length){
+    el.innerHTML = `<div class="muted">Nenhuma assinatura cadastrada.</div>`;
+    return;
+  }
+
+  el.innerHTML = data.subscriptions
+    .slice()
+    .sort((a,b)=> (a.name||"").localeCompare(b.name||""))
+    .map(sub=>`
+      <div class="card" style="margin:10px 0; box-shadow:none">
+        <div class="tags">
+          <span class="tag tipo">${escapeHTML(sub.frequency || "mensal")}</span>
+          <span class="muted" style="font-weight:900">${escapeHTML(sub.name || "Assinatura")}</span>
+          <span style="margin-left:auto;font-weight:900">${money(sub.valor||0)}</span>
+        </div>
+        <div class="muted" style="margin-top:8px">
+          Início: <b>${escapeHTML(sub.startMonth || "—")}</b> • Venc.: dia <b>${escapeHTML(sub.dueDay ?? "—")}</b>
+          • Ativa: <b>${sub.active===false ? "não" : "sim"}</b>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:10px;gap:8px">
+          <button class="btn small" onclick="toggleSub('${sub.id}')">${sub.active===false ? "Ativar" : "Desativar"}</button>
+          <button class="btn small danger" onclick="deleteSub('${sub.id}')">Excluir</button>
+        </div>
+      </div>
+    `).join("");
+}
+
+function addSubscription(){
+  const data = loadData();
+  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+
+  const name = (prompt("Nome da assinatura (ex: Netflix):") || "").trim();
+  if(!name) return;
+
+  const valor = Number(prompt("Valor (ex: 39.90):") || 0);
+  if(!isFinite(valor) || valor <= 0) return alert("Valor inválido.");
+
+  const startMonth = (prompt("Mês de início (AAAA-MM):", ymNow()) || "").trim();
+  if(!/^\d{4}-\d{2}$/.test(startMonth)) return alert("Mês inválido (use AAAA-MM).");
+
+  const dueDay = Number(prompt("Dia de vencimento (1-31):", "1") || 1);
+  if(!isFinite(dueDay) || dueDay < 1 || dueDay > 31) return alert("Dia inválido.");
+
+  const frequency = (prompt("Frequência (mensal/anual):", "mensal") || "mensal").trim().toLowerCase();
+  const freq = (frequency === "anual") ? "anual" : "mensal";
+
+  const categoria = (prompt("Categoria (padrão: Cartão):", "Cartão") || "Cartão").trim();
+  const subcategoria = (prompt("Subcategoria (padrão: Assinaturas):", "Assinaturas") || "Assinaturas").trim();
+
+  data.subscriptions.push({
+    id: uid(),
+    name,
+    valor,
+    startMonth,
+    dueDay,
+    frequency: freq,
+    categoria,
+    subcategoria,
+    active: true,
+    aliases: [name]
+  });
+
+  saveData(data);
+
+  // gera cobrança no mês atual, se aplicável e se fatura estiver aberta
+  const month = document.getElementById("card-month")?.value || ymNow();
+  try{ ensureSubscriptionsForMonth(month); }catch(e){}
+
+  try{ renderSubscriptions(); }catch(e){}
+  try{ renderCartao(); }catch(e){}
+
+  alert("Assinatura cadastrada!");
+}
+window.addSubscription = addSubscription;
+
+function toggleSub(id){
+  const data = loadData();
+  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+  const s = data.subscriptions.find(x=>x.id===id);
+  if(!s) return;
+  s.active = (s.active === false) ? true : false;
+  saveData(data);
+  try{ renderSubscriptions(); }catch(e){}
+  try{ renderCartao(); }catch(e){}
+}
+window.toggleSub = toggleSub;
+
+function deleteSub(id){
+  if(!confirm("Excluir assinatura?")) return;
+  const data = loadData();
+  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+  data.subscriptions = data.subscriptions.filter(x=>x.id!==id);
+  saveData(data);
+  try{ renderSubscriptions(); }catch(e){}
+  try{ renderCartao(); }catch(e){}
+}
+window.deleteSub = deleteSub;
+
 /* =========================
    INIT
 ========================= */
