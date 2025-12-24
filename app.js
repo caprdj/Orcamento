@@ -104,6 +104,32 @@ function accountTagClass(conta){
   if(conta === "Banco do Brasil") return "bb";
   if(conta === "Cartão") return "tipo";
   return "";
+
+function transferDirection(l){
+  // Determina direção de transferências para conta BB/Bradesco
+  // Preferência: campos origemTrf/destinoTrf (novos). Fallback: descrição com setas.
+  const conta = String(l?.conta||"");
+  const tipo  = String(l?.tipo||"");
+  if(tipo !== "Transferência") return null;
+
+  const origem = String(l?.origemTrf||"").toUpperCase();
+  const destino = String(l?.destinoTrf||"").toUpperCase();
+  const desc = String(l?.descricao||"");
+
+  if(conta === "Banco do Brasil"){
+    if(origem === "BRAD") return "in";
+    if(destino === "BRAD") return "out";
+    if(desc.includes("→ BB") || desc.includes("Bradesco → BB")) return "in";
+    if(desc.includes("BB → Bradesco") || desc.includes("→ Bradesco")) return "out";
+  }
+  if(conta === "Bradesco"){
+    if(origem === "BB") return "in";
+    if(destino === "BB") return "out";
+    if(desc.includes("BB → Bradesco")) return "in";
+    if(desc.includes("Bradesco → BB")) return "out";
+  }
+  return null;
+}
 }
 function escapeHTML(str){
   return String(str ?? "")
@@ -353,7 +379,8 @@ function salvarLancamento(){
     valor,
     competencia,
     data: dataLanc,
-    descricao
+    descricao,
+    destinoTrf: destinoTrf || ""
   });
 
   // Espelho automático: Bradesco -> BB (entra como Transferência no BB, mas NÃO vira Invest)
@@ -369,7 +396,9 @@ function salvarLancamento(){
       competencia,
       data: dataLanc,
       descricao: "Transferência Bradesco → BB",
-      linkedId: originalId
+      linkedId: originalId,
+      origemTrf: "BRAD",
+      destinoTrf: ""
     });
   }
 
@@ -386,7 +415,9 @@ function salvarLancamento(){
       competencia,
       data: dataLanc,
       descricao: "Transferência BB → Bradesco",
-      linkedId: originalId
+      linkedId: originalId,
+      origemTrf: "BB",
+      destinoTrf: ""
     });
   }
 
@@ -674,22 +705,38 @@ function renderInvestimentos(){
   const month = document.getElementById("invest-month")?.value || ymNow();
   const year = String(month).slice(0,4);
 
-  const listMonth = data.lancamentos.filter(l =>
+  // 1) Transferências na CC do BB (entrada/saída)
+  const listTrfBB = data.lancamentos.filter(l =>
+    l.conta === "Banco do Brasil" &&
+    l.tipo === "Transferência" &&
+    l.competencia === month
+  );
+
+  let trfInMes = 0, trfOutMes = 0;
+  listTrfBB.forEach(l=>{
+    const dir = transferDirection(l);
+    const v = Number(l.valor||0);
+    if(dir === "in") trfInMes += v;
+    else if(dir === "out") trfOutMes += v;
+  });
+
+  // 2) Movimentos de investimento (categoria Investimentos, conta BB)
+  const listInvestMonth = data.lancamentos.filter(l =>
     l.conta === "Banco do Brasil" &&
     l.categoria === "Investimentos" &&
     l.competencia === month
   );
 
   let aplicMes = 0, rendMes = 0, retirMes = 0;
-  listMonth.forEach(l=>{
+  listInvestMonth.forEach(l=>{
     const mv = normInvestMovValue(l);
     const v = Number(l.valor||0);
     if(mv === "aplic" || mv === "ajuste-") aplicMes += v;
     else if(mv === "retir") retirMes += v;
-    else rendMes += v;
+    else rendMes += v; // rend, ajuste+
   });
 
-  // saldo anterior = saldo final do mês anterior (por investMov)
+  // saldo anterior (mês anterior) apenas para Investimentos (não CC)
   const prev = prevMonth(month);
   const prevList = data.lancamentos.filter(l =>
     l.conta === "Banco do Brasil" &&
@@ -697,27 +744,27 @@ function renderInvestimentos(){
     l.competencia === prev
   );
 
-  let saldoAnterior = 0;
+  let saldoAnteriorInvest = 0;
   prevList.forEach(l=>{
     const mv = normInvestMovValue(l);
     const v = Number(l.valor||0);
-    if(mv === "aplic" || mv === "ajuste-") saldoAnterior -= v;
-    else saldoAnterior += v; // rend, retir, ajuste+
+    if(mv === "aplic" || mv === "ajuste-") saldoAnteriorInvest -= v;
+    else saldoAnteriorInvest += v;
   });
 
   let saldoMovMes = 0;
-  listMonth.forEach(l=>{
+  listInvestMonth.forEach(l=>{
     const mv = normInvestMovValue(l);
     const v = Number(l.valor||0);
     if(mv === "aplic" || mv === "ajuste-") saldoMovMes -= v;
     else saldoMovMes += v;
   });
 
-  const saldoFinal = saldoAnterior + saldoMovMes;
+  const saldoFinalInvest = saldoAnteriorInvest + saldoMovMes;
 
   // Por ativo no mês (delta)
   const porAtivoMes = {};
-  listMonth.forEach(l=>{
+  listInvestMonth.forEach(l=>{
     const ativo = l.subcategoria || "Diversos";
     const mv = normInvestMovValue(l);
     const v = Number(l.valor||0);
@@ -728,7 +775,7 @@ function renderInvestimentos(){
     .filter(([,v]) => Math.abs(v) > 0.00001)
     .sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
 
-  // Ano (acumulado) — por ativo
+  // Ano (acumulado) — por ativo (Investimentos)
   const listYear = data.lancamentos.filter(l =>
     l.conta === "Banco do Brasil" &&
     l.categoria === "Investimentos" &&
@@ -762,28 +809,37 @@ function renderInvestimentos(){
   if(!investEl) return;
 
   investEl.innerHTML = `
-    <div class="row big"><span>Saldo anterior</span><span>${money(saldoAnterior)}</span></div>
-    <div class="row big"><span>Saldo final (mês)</span><span>${money(saldoFinal)}</span></div>
+    <div class="row big"><span>CC BB — Transferências recebidas</span><span>${money(trfInMes)}</span></div>
+    <div class="row big"><span>CC BB — Transferências enviadas</span><span>${money(trfOutMes)}</span></div>
+    <div class="hint">Dica: para o app identificar direção, use o seletor “Destino” ao lançar uma transferência. Lançamentos antigos são inferidos pela descrição.</div>
 
     <hr/>
 
-    <div class="row"><span><b>Totais do mês (Invest)</b></span><span></span></div>
-    <div class="row"><span>APLIC (saídas)</span><span>${money(aplicMes)}</span></div>
+    <div class="row big"><span>Investimentos — Saldo anterior</span><span>${money(saldoAnteriorInvest)}</span></div>
+    <div class="row big"><span>Investimentos — Saldo final (mês)</span><span>${money(saldoFinalInvest)}</span></div>
+
+    <div class="row"><span><b>Totais do mês (Investimentos)</b></span><span></span></div>
+    <div class="row"><span>APLIC (aportes)</span><span>${money(aplicMes)}</span></div>
     <div class="row"><span>REND (dividendos/juros)</span><span>${money(rendMes)}</span></div>
     <div class="row"><span>RETIR (resgates/vendas)</span><span>${money(retirMes)}</span></div>
 
-    ${entriesMes.length ? renderBars("Por ativo (mês)", entriesMes) : `<div class="hint">Sem movimento por ativo neste mês.</div>`}
+    ${entriesMes.length ? renderBars("Movimento por ativo (mês)", entriesMes) : `<div class="hint">Sem movimento por ativo neste mês.</div>`}
 
     <hr/>
 
     <div class="row"><span><b>Proventos acumulados no ano (${year})</b></span><span>${money(sumAll("rend"))}</span></div>
-    <div class="row"><span>Poupanças</span><span>${money(sumKind("Poupança","rend"))}</span></div>
+    <div class="row"><span>Poupanças / Previdência</span><span>${money(sumKind("Poupança","rend"))}</span></div>
     <div class="row"><span>FIIs</span><span>${money(sumKind("FII","rend"))}</span></div>
     <div class="row"><span>Ações</span><span>${money(sumKind("Ação","rend"))}</span></div>
 
     <details style="margin-top:10px" open>
       <summary style="cursor:pointer;font-weight:900">Tabela por ativo (ano)</summary>
       ${renderInvestAssetTable(rows)}
+    </details>
+
+    <details style="margin-top:10px">
+      <summary style="cursor:pointer;font-weight:900">Transferências na CC do BB (mês)</summary>
+      ${listTrfBB.length ? renderLancList(listTrfBB) : `<div class="muted">Sem transferências no BB neste mês.</div>`}
     </details>
   `;
 }
