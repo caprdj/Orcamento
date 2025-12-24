@@ -1325,18 +1325,56 @@ function exportExcel(){
 }
 window.exportExcel = exportExcel;
 
+function parseCatsInput(text){
+  let t = String(text ?? "").trim();
+
+  // remove BOM invisível (às vezes aparece ao colar)
+  t = t.replace(/\uFEFF/g, "");
+
+  // troca aspas “inteligentes” por aspas normais
+  t = t.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+
+  // remove vírgula final antes de } ou ]
+  t = t.replace(/,\s*([}\]])/g, "$1");
+
+  // se vier com strings em aspas simples, converte para aspas duplas
+  // 'abc' -> "abc"
+  t = t.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, (_, p1) => {
+    const safe = String(p1).replace(/"/g, '\\"');
+    return `"${safe}"`;
+  });
+
+  // se vier com chaves sem aspas (estilo JS), coloca aspas:
+  // { Renda: [...] } -> { "Renda": [...] }
+  t = t.replace(/([{,]\s*)([A-Za-zÀ-ÿ0-9_ -]+)\s*:/g, (m, pfx, key) => {
+    return `${pfx}"${String(key).trim()}":`;
+  });
+
+  return JSON.parse(t);
+}
+
 function openCats(){
   const cats = getCats();
-  const text = prompt("Edite como JSON (categoria: [sub1, sub2...])", JSON.stringify(cats, null, 2));
-  if(!text) return;
+  const text = prompt(
+    "Edite como JSON (categoria: [sub1, sub2...])",
+    JSON.stringify(cats, null, 2)
+  );
+  if(text == null) return; // cancelou
+
   try{
-    const obj = JSON.parse(text);
+    const obj = parseCatsInput(text);
+
+    if(!obj || typeof obj !== "object" || Array.isArray(obj)){
+      alert("Formato inválido: precisa ser um OBJETO { categoria: [sub...] }");
+      return;
+    }
+
     setCats(obj);
     fillCategorySelects();
     renderCatsPreview();
     alert("Categorias atualizadas!");
   }catch(e){
-    alert("JSON inválido.");
+    alert("JSON inválido. Dica: evite aspas “curvas” e vírgula no final.\n\nDetalhe: " + (e?.message || e));
   }
 }
 window.openCats = openCats;
