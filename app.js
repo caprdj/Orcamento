@@ -31,7 +31,10 @@
 })();
 
 function loadData(){ return window.StorageAPI.load(); }
-function saveData(data){ window.StorageAPI.save(data); }
+function saveData(data){
+  window.StorageAPI.save(data);
+  try{ computeSaldoAnterior._cache = {}; }catch(e){}
+}
 
 /* =========================
    HELPERS
@@ -54,7 +57,7 @@ function money(v){
 }
 function prevMonth(ym){
   const [y,m] = String(ym||"").split("-").map(Number);
-  if(!y || !m) return ymNow();
+  if(!y || !m) return null; // <— era ymNow()
   const d = new Date(y, m-1, 1);
   d.setMonth(d.getMonth()-1);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
@@ -66,11 +69,15 @@ function nextMonth(ym){
   d.setMonth(d.getMonth()+1);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
 }
-function nextMonthByOffset(ym, offset){
-  const [y,m] = ym.split("-").map(Number);
-  const d = new Date(y, m-1 + offset, 1);
+
+function addMonthsYM(ym, delta){
+  const [y,m] = String(ym||"").split("-").map(Number);
+  if(!y || !m) return ymNow();
+  const d = new Date(y, m-1, 1);
+  d.setMonth(d.getMonth() + Number(delta||0));
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
 }
+
 function fmtDate(iso){
   if(!iso) return "";
   const s = String(iso).trim();
@@ -513,26 +520,70 @@ function renderLancList(list){
 }
 
 function computeSaldoAnterior(conta, month){
-  // saldo anterior automático = (receitas - despesas) do mês anterior, sem "Saldo anterior" manual
   const data = loadData();
-  const pm = prevMonth(month);
+  data.lancamentos = Array.isArray(data.lancamentos) ? data.lancamentos : [];
 
-  const L = (Array.isArray(data.lancamentos) ? data.lancamentos : []).filter(l =>
-    l.conta === conta &&
-    l.competencia === pm &&
-    l.conta !== "Cartão"
+  const cache = computeSaldoAnterior._cache || (computeSaldoAnterior._cache = {});
+  const key = (c,m)=> `${c}__${m}`;
+
+  // mês mais antigo que existe para esta conta (YYYY-MM)
+  const months = data.lancamentos
+    .filter(l => l.showInSaldo !== false) // não usado, mas não atrapalha
+    .filter(l => l.conta === conta && l.conta !== "Cartão" && /^\d{4}-\d{2}$/.test(String(l.competencia||"")))
+    .map(l => l.competencia);
+
+  const minMonth = months.length ? months.reduce((a,b)=> a < b ? a : b) : null;
+
+  const hasAny = (c,m)=> data.lancamentos.some(l =>
+    l.conta === c && l.conta !== "Cartão" && l.competencia === m
   );
 
-  const receitas = L.filter(l =>
-    l.tipo === "Receita" &&
-    !(l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
-  );
-  const despesas = L.filter(l => l.tipo === "Despesa");
+  function stepBackToMonthWithData(c, startMonth){
+    let pm = prevMonth(startMonth);
+    // hard limit: no máximo 120 passos (~10 anos) para evitar travar celular
+    let guard = 0;
 
-  const totalRec = receitas.reduce((a,b)=>a+Number(b.valor||0),0);
-  const totalDes = despesas.reduce((a,b)=>a+Number(b.valor||0),0);
+    while(pm){
+      if(minMonth && pm < minMonth) return null;   // passou do mais antigo existente
+      if(hasAny(c, pm)) return pm;                 // achou mês com dados
+      pm = prevMonth(pm);
+      guard++;
+      if(guard > 120) return null;                 // segurança anti-freeze
+    }
+    return null;
+  }
 
-  return totalRec - totalDes;
+  function calcTotalDisponivel(c, m){
+    const k = key(c,m);
+    if(cache[k] != null) return cache[k];
+
+    const Lm = data.lancamentos.filter(l => l.competencia === m && l.conta === c && l.conta !== "Cartão");
+
+    const saldoAnteriorLancado = Lm
+      .filter(l => l.tipo === "Receita" && l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
+      .reduce((a,b)=>a+Number(b.valor||0),0);
+
+    const pm = stepBackToMonthWithData(c, m);
+    const saldoAnteriorAuto = pm ? calcTotalDisponivel(c, pm) : 0;
+
+    const saldoAnteriorFinal = saldoAnteriorAuto + saldoAnteriorLancado;
+
+const receitas = Lm.filter(l =>
+  l.tipo === "Receita" &&
+  !(l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
+);
+const totalRec = receitas.reduce((a,b)=>a+Number(b.valor||0),0);
+
+const despesas = Lm.filter(l => l.tipo === "Despesa");
+const totalDes = despesas.reduce((a,b)=>a+Number(b.valor||0),0);
+    const totalDisponivel = saldoAnteriorFinal + totalRec - totalDes;
+    cache[k] = totalDisponivel;
+    return totalDisponivel;
+  }
+
+  // saldo anterior do mês atual = total disponível do último mês anterior que tem dados
+  const pm = stepBackToMonthWithData(conta, month);
+  return pm ? calcTotalDisponivel(conta, pm) : 0;
 }
 
 function renderMes(){
@@ -737,49 +788,6 @@ function renderInvestimentos(){
   `;
 }
 
-
-/* =========================
-   ASSINATURAS – CRUD BÁSICO
-========================= */
-function addSubscription(){
-  const data = loadData();
-  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
-
-  const name = prompt("Nome da assinatura (ex: Netflix):");
-  if(!name) return;
-
-  const valor = Number(prompt("Valor mensal da assinatura:"));
-  if(!isFinite(valor) || valor <= 0){
-    alert("Valor inválido.");
-    return;
-  }
-
-  const categoria = prompt("Categoria:", "Cartão") || "Cartão";
-  const subcategoria = prompt("Subcategoria:", "Assinaturas") || "Assinaturas";
-
-  const startMonth = prompt("Mês inicial (AAAA-MM):", ymNow()) || ymNow();
-  const dueDay = Number(prompt("Dia de vencimento (1–28):", "1")) || 1;
-
-  data.subscriptions.push({
-    id: uid(),
-    name,
-    valor,
-    categoria,
-    subcategoria,
-    startMonth,
-    dueDay,
-    frequency: "mensal",
-    active: true
-  });
-
-  saveData(data);
-  alert("Assinatura cadastrada!");
-  renderCartao();
-}
-
-window.addSubscription = addSubscription;
-
-
 /* =========================
    CARTÃO — FECHAMENTO + ASSINATURAS (mantém suas IDs/estruturas)
    (Versão “safe”: não quebra se não existirem elementos)
@@ -948,30 +956,65 @@ function salvarCartaoGasto(){
   const dataLanc = document.getElementById("card-date")?.value || todayISO();
   const descricao = document.getElementById("card-descricao")?.value || "";
 
-  const parcelas = Number(document.getElementById("card-parcelas")?.value || 1);
-const parcelaAtual = Number(document.getElementById("card-parcela-atual")?.value || 1);
+  const isParcelado = !!document.getElementById("card-parcelado")?.checked;
+  let parcelas = Number(document.getElementById("card-parcelas")?.value || 1);
+  if(!isFinite(parcelas) || parcelas < 1) parcelas = 1;
+  parcelas = Math.min(Math.max(1, Math.floor(parcelas)), 48);
 
-const valorParcela = valor / parcelas;
+  
+  // Compras parceladas: cria N lançamentos (1/N ... N/N) em meses consecutivos.
+  if(isParcelado && parcelas > 1){
+    // dia da parcela = dia da data informada (se possível)
+    let day = 1;
+    try{
+      if(/^\d{4}-\d{2}-\d{2}$/.test(dataLanc)) day = Number(String(dataLanc).slice(8,10)) || 1;
+    }catch(e){}
+    const groupId = uid();
 
-for(let i = parcelaAtual; i <= parcelas; i++){
-  const comp = nextMonthByOffset(month, i - parcelaAtual);
+    // trava se algum mês futuro já estiver fechado
+    const blocked = [];
+    for(let i=0;i<parcelas;i++){
+      const mth = addMonthsYM(month, i);
+      if(isCardMonthClosed(mth)) blocked.push(mth);
+    }
+    if(blocked.length){
+      alert("Não foi possível salvar: existe(m) fatura(s) já fechada(s) no(s) mês(es): " + blocked.join(", ") + ".\nReabra a fatura desses meses ou lance como compra à vista.");
+      return;
+    }
 
-  data.lancamentos.push({
-    id: uid(),
-    conta: "Cartão",
-    tipo: "Despesa",
-    categoria,
-    subcategoria,
-    investMov: "",
-    valor: valorParcela,
-    competencia: comp,
-    data: dataLanc,
-    descricao: `${descricao} (${i}/${parcelas})`,
-    parcelado: true,
-    parcelaAtual: i,
-    parcelas
-  });
-}
+    const valorParcela = Number((valor / parcelas).toFixed(2));
+    for(let i=0;i<parcelas;i++){
+      const comp = addMonthsYM(month, i);
+      data.lancamentos.push({
+        id: uid(),
+        conta: "Cartão",
+        tipo: "Despesa",
+        categoria,
+        subcategoria,
+        investMov: "",
+        valor: valorParcela,
+        competencia: comp,
+        data: isoFromYMDay(comp, day),
+        descricao: `${descricao} (${i+1}/${parcelas})`,
+        installmentGroup: groupId,
+        installmentIndex: i+1,
+        installmentTotal: parcelas
+      });
+    }
+  }else{
+    data.lancamentos.push({
+      id: uid(),
+      conta: "Cartão",
+      tipo: "Despesa",
+      categoria,
+      subcategoria,
+      investMov: "",
+      valor,
+      competencia: month,
+      data: dataLanc,
+      descricao
+    });
+  }
 
   saveData(data);
 
@@ -1107,6 +1150,9 @@ function renderCartao(){
 
   [payAccountEl, payMonthEl, payDateEl].forEach(el=>{ if(el) el.disabled = !!closing; });
 
+  // Render do painel de assinaturas (ativar/desativar + lista)
+  try{ renderSubscriptions(month); }catch(e){}
+
   const items = data.lancamentos.filter(l=>l.conta==="Cartão" && l.competencia===month);
   const subs = items.filter(l=>l.tipo==="Assinatura");
   const geral = items.filter(l=>l.tipo!=="Assinatura");
@@ -1239,6 +1285,111 @@ function openCats(){
 }
 window.openCats = openCats;
 
+
+function renderSubscriptions(){
+  const data = loadData();
+  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+  const el = document.getElementById("subs-list");
+  if(!el) return;
+
+  if(!data.subscriptions.length){
+    el.innerHTML = `<div class="muted">Nenhuma assinatura cadastrada.</div>`;
+    return;
+  }
+
+  el.innerHTML = data.subscriptions
+    .slice()
+    .sort((a,b)=> (a.name||"").localeCompare(b.name||""))
+    .map(sub=>`
+      <div class="card" style="margin:10px 0; box-shadow:none">
+        <div class="tags">
+          <span class="tag tipo">${escapeHTML(sub.frequency || "mensal")}</span>
+          <span class="muted" style="font-weight:900">${escapeHTML(sub.name || "Assinatura")}</span>
+          <span style="margin-left:auto;font-weight:900">${money(sub.valor||0)}</span>
+        </div>
+        <div class="muted" style="margin-top:8px">
+          Início: <b>${escapeHTML(sub.startMonth || "—")}</b> • Venc.: dia <b>${escapeHTML(sub.dueDay ?? "—")}</b>
+          • Ativa: <b>${sub.active===false ? "não" : "sim"}</b>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:10px;gap:8px">
+          <button class="btn small" onclick="toggleSub('${sub.id}')">${sub.active===false ? "Ativar" : "Desativar"}</button>
+          <button class="btn small danger" onclick="deleteSub('${sub.id}')">Excluir</button>
+        </div>
+      </div>
+    `).join("");
+}
+
+function addSubscription(){
+  const data = loadData();
+  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+
+  const name = (prompt("Nome da assinatura (ex: Netflix):") || "").trim();
+  if(!name) return;
+
+  const valor = Number(prompt("Valor (ex: 39.90):") || 0);
+  if(!isFinite(valor) || valor <= 0) return alert("Valor inválido.");
+
+  const startMonth = (prompt("Mês de início (AAAA-MM):", ymNow()) || "").trim();
+  if(!/^\d{4}-\d{2}$/.test(startMonth)) return alert("Mês inválido (use AAAA-MM).");
+
+  const dueDay = Number(prompt("Dia de vencimento (1-31):", "1") || 1);
+  if(!isFinite(dueDay) || dueDay < 1 || dueDay > 31) return alert("Dia inválido.");
+
+  const frequency = (prompt("Frequência (mensal/anual):", "mensal") || "mensal").trim().toLowerCase();
+  const freq = (frequency === "anual") ? "anual" : "mensal";
+
+  const categoria = (prompt("Categoria (padrão: Cartão):", "Cartão") || "Cartão").trim();
+  const subcategoria = (prompt("Subcategoria (padrão: Assinaturas):", "Assinaturas") || "Assinaturas").trim();
+
+  data.subscriptions.push({
+    id: uid(),
+    name,
+    valor,
+    startMonth,
+    dueDay,
+    frequency: freq,
+    categoria,
+    subcategoria,
+    active: true,
+    aliases: [name]
+  });
+
+  saveData(data);
+
+  // gera cobrança no mês atual, se aplicável e se fatura estiver aberta
+  const month = document.getElementById("card-month")?.value || ymNow();
+  try{ ensureSubscriptionsForMonth(month); }catch(e){}
+
+  try{ renderSubscriptions(); }catch(e){}
+  try{ renderCartao(); }catch(e){}
+
+  alert("Assinatura cadastrada!");
+}
+window.addSubscription = addSubscription;
+
+function toggleSub(id){
+  const data = loadData();
+  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+  const s = data.subscriptions.find(x=>x.id===id);
+  if(!s) return;
+  s.active = (s.active === false) ? true : false;
+  saveData(data);
+  try{ renderSubscriptions(); }catch(e){}
+  try{ renderCartao(); }catch(e){}
+}
+window.toggleSub = toggleSub;
+
+function deleteSub(id){
+  if(!confirm("Excluir assinatura?")) return;
+  const data = loadData();
+  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+  data.subscriptions = data.subscriptions.filter(x=>x.id!==id);
+  saveData(data);
+  try{ renderSubscriptions(); }catch(e){}
+  try{ renderCartao(); }catch(e){}
+}
+window.deleteSub = deleteSub;
+
 /* =========================
    INIT
 ========================= */
@@ -1291,6 +1442,15 @@ function safeInit(){
   updateLaunchUI();
   renderCatsPreview();
 
+  // Parcelado (Cartão)
+  const chkParc = document.getElementById("card-parcelado");
+  const wrapParc = document.getElementById("wrap-card-parcelas");
+  if(chkParc && wrapParc){
+    const sync = ()=>{ wrapParc.style.display = chkParc.checked ? "flex" : "none"; };
+    chkParc.addEventListener("change", sync);
+    sync();
+  }
+
   // começa em "lancar" (como seu app), mas deixa a aba Mes pronta quando clicar
   showView("lancar");
 }
@@ -1302,3 +1462,5 @@ if(document.readyState === "loading"){
 }else{
   try{ safeInit(); }catch(e){ console.error(e); alert("Erro ao iniciar o app. Abra o Console para detalhes."); }
 }
+
+window.renderSubscriptions = renderSubscriptions;
