@@ -31,10 +31,7 @@
 })();
 
 function loadData(){ return window.StorageAPI.load(); }
-function saveData(data){
-  window.StorageAPI.save(data);
-  try{ computeSaldoAnterior._cache = {}; }catch(e){}
-}
+function saveData(data){ window.StorageAPI.save(data); }
 
 /* =========================
    HELPERS
@@ -57,7 +54,7 @@ function money(v){
 }
 function prevMonth(ym){
   const [y,m] = String(ym||"").split("-").map(Number);
-  if(!y || !m) return null; // <— era ymNow()
+  if(!y || !m) return ymNow();
   const d = new Date(y, m-1, 1);
   d.setMonth(d.getMonth()-1);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
@@ -511,70 +508,26 @@ function renderLancList(list){
 }
 
 function computeSaldoAnterior(conta, month){
+  // saldo anterior automático = (receitas - despesas) do mês anterior, sem "Saldo anterior" manual
   const data = loadData();
-  data.lancamentos = Array.isArray(data.lancamentos) ? data.lancamentos : [];
+  const pm = prevMonth(month);
 
-  const cache = computeSaldoAnterior._cache || (computeSaldoAnterior._cache = {});
-  const key = (c,m)=> `${c}__${m}`;
-
-  // mês mais antigo que existe para esta conta (YYYY-MM)
-  const months = data.lancamentos
-    .filter(l => l.showInSaldo !== false) // não usado, mas não atrapalha
-    .filter(l => l.conta === conta && l.conta !== "Cartão" && /^\d{4}-\d{2}$/.test(String(l.competencia||"")))
-    .map(l => l.competencia);
-
-  const minMonth = months.length ? months.reduce((a,b)=> a < b ? a : b) : null;
-
-  const hasAny = (c,m)=> data.lancamentos.some(l =>
-    l.conta === c && l.conta !== "Cartão" && l.competencia === m
+  const L = (Array.isArray(data.lancamentos) ? data.lancamentos : []).filter(l =>
+    l.conta === conta &&
+    l.competencia === pm &&
+    l.conta !== "Cartão"
   );
 
-  function stepBackToMonthWithData(c, startMonth){
-    let pm = prevMonth(startMonth);
-    // hard limit: no máximo 120 passos (~10 anos) para evitar travar celular
-    let guard = 0;
+  const receitas = L.filter(l =>
+    l.tipo === "Receita" &&
+    !(l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
+  );
+  const despesas = L.filter(l => l.tipo === "Despesa");
 
-    while(pm){
-      if(minMonth && pm < minMonth) return null;   // passou do mais antigo existente
-      if(hasAny(c, pm)) return pm;                 // achou mês com dados
-      pm = prevMonth(pm);
-      guard++;
-      if(guard > 120) return null;                 // segurança anti-freeze
-    }
-    return null;
-  }
+  const totalRec = receitas.reduce((a,b)=>a+Number(b.valor||0),0);
+  const totalDes = despesas.reduce((a,b)=>a+Number(b.valor||0),0);
 
-  function calcTotalDisponivel(c, m){
-    const k = key(c,m);
-    if(cache[k] != null) return cache[k];
-
-    const Lm = data.lancamentos.filter(l => l.competencia === m && l.conta === c && l.conta !== "Cartão");
-
-    const saldoAnteriorLancado = Lm
-      .filter(l => l.tipo === "Receita" && l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
-      .reduce((a,b)=>a+Number(b.valor||0),0);
-
-    const pm = stepBackToMonthWithData(c, m);
-    const saldoAnteriorAuto = pm ? calcTotalDisponivel(c, pm) : 0;
-
-    const saldoAnteriorFinal = saldoAnteriorAuto + saldoAnteriorLancado;
-
-const receitas = Lm.filter(l =>
-  l.tipo === "Receita" &&
-  !(l.categoria === "Renda" && l.subcategoria === "Saldo anterior")
-);
-const totalRec = receitas.reduce((a,b)=>a+Number(b.valor||0),0);
-
-const despesas = Lm.filter(l => l.tipo === "Despesa");
-const totalDes = despesas.reduce((a,b)=>a+Number(b.valor||0),0);
-    const totalDisponivel = saldoAnteriorFinal + totalRec - totalDes;
-    cache[k] = totalDisponivel;
-    return totalDisponivel;
-  }
-
-  // saldo anterior do mês atual = total disponível do último mês anterior que tem dados
-  const pm = stepBackToMonthWithData(conta, month);
-  return pm ? calcTotalDisponivel(conta, pm) : 0;
+  return totalRec - totalDes;
 }
 
 function renderMes(){
@@ -1225,111 +1178,6 @@ function openCats(){
   }
 }
 window.openCats = openCats;
-
-
-function renderSubscriptions(){
-  const data = loadData();
-  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
-  const el = document.getElementById("subs-list");
-  if(!el) return;
-
-  if(!data.subscriptions.length){
-    el.innerHTML = `<div class="muted">Nenhuma assinatura cadastrada.</div>`;
-    return;
-  }
-
-  el.innerHTML = data.subscriptions
-    .slice()
-    .sort((a,b)=> (a.name||"").localeCompare(b.name||""))
-    .map(sub=>`
-      <div class="card" style="margin:10px 0; box-shadow:none">
-        <div class="tags">
-          <span class="tag tipo">${escapeHTML(sub.frequency || "mensal")}</span>
-          <span class="muted" style="font-weight:900">${escapeHTML(sub.name || "Assinatura")}</span>
-          <span style="margin-left:auto;font-weight:900">${money(sub.valor||0)}</span>
-        </div>
-        <div class="muted" style="margin-top:8px">
-          Início: <b>${escapeHTML(sub.startMonth || "—")}</b> • Venc.: dia <b>${escapeHTML(sub.dueDay ?? "—")}</b>
-          • Ativa: <b>${sub.active===false ? "não" : "sim"}</b>
-        </div>
-        <div style="display:flex;justify-content:space-between;margin-top:10px;gap:8px">
-          <button class="btn small" onclick="toggleSub('${sub.id}')">${sub.active===false ? "Ativar" : "Desativar"}</button>
-          <button class="btn small danger" onclick="deleteSub('${sub.id}')">Excluir</button>
-        </div>
-      </div>
-    `).join("");
-}
-
-function addSubscription(){
-  const data = loadData();
-  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
-
-  const name = (prompt("Nome da assinatura (ex: Netflix):") || "").trim();
-  if(!name) return;
-
-  const valor = Number(prompt("Valor (ex: 39.90):") || 0);
-  if(!isFinite(valor) || valor <= 0) return alert("Valor inválido.");
-
-  const startMonth = (prompt("Mês de início (AAAA-MM):", ymNow()) || "").trim();
-  if(!/^\d{4}-\d{2}$/.test(startMonth)) return alert("Mês inválido (use AAAA-MM).");
-
-  const dueDay = Number(prompt("Dia de vencimento (1-31):", "1") || 1);
-  if(!isFinite(dueDay) || dueDay < 1 || dueDay > 31) return alert("Dia inválido.");
-
-  const frequency = (prompt("Frequência (mensal/anual):", "mensal") || "mensal").trim().toLowerCase();
-  const freq = (frequency === "anual") ? "anual" : "mensal";
-
-  const categoria = (prompt("Categoria (padrão: Cartão):", "Cartão") || "Cartão").trim();
-  const subcategoria = (prompt("Subcategoria (padrão: Assinaturas):", "Assinaturas") || "Assinaturas").trim();
-
-  data.subscriptions.push({
-    id: uid(),
-    name,
-    valor,
-    startMonth,
-    dueDay,
-    frequency: freq,
-    categoria,
-    subcategoria,
-    active: true,
-    aliases: [name]
-  });
-
-  saveData(data);
-
-  // gera cobrança no mês atual, se aplicável e se fatura estiver aberta
-  const month = document.getElementById("card-month")?.value || ymNow();
-  try{ ensureSubscriptionsForMonth(month); }catch(e){}
-
-  try{ renderSubscriptions(); }catch(e){}
-  try{ renderCartao(); }catch(e){}
-
-  alert("Assinatura cadastrada!");
-}
-window.addSubscription = addSubscription;
-
-function toggleSub(id){
-  const data = loadData();
-  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
-  const s = data.subscriptions.find(x=>x.id===id);
-  if(!s) return;
-  s.active = (s.active === false) ? true : false;
-  saveData(data);
-  try{ renderSubscriptions(); }catch(e){}
-  try{ renderCartao(); }catch(e){}
-}
-window.toggleSub = toggleSub;
-
-function deleteSub(id){
-  if(!confirm("Excluir assinatura?")) return;
-  const data = loadData();
-  data.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
-  data.subscriptions = data.subscriptions.filter(x=>x.id!==id);
-  saveData(data);
-  try{ renderSubscriptions(); }catch(e){}
-  try{ renderCartao(); }catch(e){}
-}
-window.deleteSub = deleteSub;
 
 /* =========================
    INIT
