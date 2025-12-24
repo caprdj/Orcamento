@@ -840,105 +840,20 @@ input:disabled,select:disabled{opacity:.75}
       const v = valueOf(o);
       const k = investKindOf(o);
 
-      if (k === 'APLIC' || k === 'APLICAÇÃO' || k === 'APLICACAO'){
-        aplic += Math.abs(v);
-        total += Math.abs(v);
-      } else if (k === 'REND' || k === 'PROVENTO' || k === 'DIVIDENDO'){
-        rend += Math.abs(v);
-        total += Math.abs(v);
-      } else if (k === 'RETIR' || k === 'RESGATE' || k === 'VENDA'){
-        retir += Math.abs(v);
-        total -= Math.abs(v);
-      } else if (k === 'AJUSTE (+)' || k === 'AJ+' || k === 'AJPOS'){
-        ajPos += Math.abs(v);
-        total += Math.abs(v);
-      } else if (k === 'AJUSTE (-)' || k === 'AJ-' || k === 'AJNEG'){
-        ajNeg += Math.abs(v);
-        total -= Math.abs(v);
-      } else {
-        // fallback: se não tiver tipo, soma “como veio”
-        total += v;
-      }
-    }
+      if (k === 'APLIC' || k === 'APLICAÇÃO' || k === id="view-invest" class="view">
+      <div class="card">
+        <h3 style="margin:0 0 8px 0">Investimentos (BB)</h3>
 
-    // HTML
-    const monthLabel = selectedMonth ? selectedMonth : '(sem mês selecionado)';
-    host.innerHTML = `
-      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:stretch; margin-bottom:10px">
-        <div style="flex:1; min-width:160px; padding:10px; border:1px solid var(--border,#ddd); border-radius:12px; background:var(--card,#fff)">
-          <div style="font-size:12px; opacity:.75">Mês</div>
-          <div style="font-weight:700">${monthLabel}</div>
-        </div>
-        <div style="flex:1; min-width:160px; padding:10px; border:1px solid var(--border,#ddd); border-radius:12px; background:var(--card,#fff)">
-          <div style="font-size:12px; opacity:.75">Saldo (fluxo)</div>
-          <div style="font-weight:800">${money(total)}</div>
-        </div>
-        <div style="flex:1; min-width:160px; padding:10px; border:1px solid var(--border,#ddd); border-radius:12px; background:var(--card,#fff)">
-          <div style="font-size:12px; opacity:.75">Aplicações</div>
-          <div style="font-weight:700">${money(aplic)}</div>
-        </div>
-        <div style="flex:1; min-width:160px; padding:10px; border:1px solid var(--border,#ddd); border-radius:12px; background:var(--card,#fff)">
-          <div style="font-size:12px; opacity:.75">Rendimentos</div>
-          <div style="font-weight:700">${money(rend)}</div>
-        </div>
-        <div style="flex:1; min-width:160px; padding:10px; border:1px solid var(--border,#ddd); border-radius:12px; background:var(--card,#fff)">
-          <div style="font-size:12px; opacity:.75">Resgates</div>
-          <div style="font-weight:700">${money(retir)}</div>
-        </div>
+        <label>Mês (competência)</label>
+        <input id="invest-month" type="month" />
+
+        <div class="hint">Aba Invest acompanha: (1) transferências recebidas/enviadas na conta-corrente do BB; (2) dividendos/juros (REND) de ações/FIIs/poupanças; (3) aplicações (APLIC) e resgates (RETIR) nos seus ativos (Previdência, Poupanças, FIIs e Ações).</div>
       </div>
 
-      <div style="font-size:12px; opacity:.8; margin:6px 0 10px 0">
-        Itens: <b>${rows.length}</b> (Conta=BB, Categoria=Investimentos)
+      <div class="card">
+        <div id="invest-view"></div>
       </div>
-
-      <div style="overflow:auto; border:1px solid var(--border,#ddd); border-radius:12px">
-        <table style="width:100%; border-collapse:collapse; font-size:14px">
-          <thead>
-            <tr style="background:rgba(0,0,0,.03)">
-              <th style="text-align:left; padding:10px; white-space:nowrap">Data</th>
-              <th style="text-align:left; padding:10px; white-space:nowrap">Tipo</th>
-              <th style="text-align:left; padding:10px">Descrição</th>
-              <th style="text-align:right; padding:10px; white-space:nowrap">Valor</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${
-              rows.map(o=>{
-                const d = getField(o,['dataReal','data','date']) ?? '';
-                const k = investKindOf(o) || (getField(o,['tipo','type']) ?? '');
-                const desc = getField(o,['descricao','desc','description']) ?? '';
-                const v = valueOf(o);
-                return `
-                  <tr style="border-top:1px solid rgba(0,0,0,.06)">
-                    <td style="padding:10px; white-space:nowrap">${String(d)}</td>
-                    <td style="padding:10px; white-space:nowrap">${String(k)}</td>
-                    <td style="padding:10px">${String(desc)}</td>
-                    <td style="padding:10px; text-align:right; white-space:nowrap">${money(v)}</td>
-                  </tr>
-                `;
-              }).join('')
-              || `<tr><td colspan="4" style="padding:12px; opacity:.75">Nenhum lançamento de investimento encontrado para este mês.</td></tr>`
-            }
-          </tbody>
-        </table>
-      </div>
-    `;
-  }
-
-  // Re-render quando mudar o mês
-  document.addEventListener('change', (e)=>{
-    if (e.target && e.target.id === 'invest-month'){
-      renderInvest();
-    }
-  });
-
-  // Hook no showView existente (sem quebrar o original)
-  const originalShowView = window.showView;
-  if (typeof originalShowView === 'function'){
-    window.showView = function(view){
-      const r = originalShowView.apply(this, arguments);
-      if (String(view).toLowerCase() === 'invest'){
-        try { renderInvest(); } catch (err) {
+</section> } catch (err) {
           const host = $('#invest-view');
           if (host) host.innerHTML = `<div style="padding:10px">Erro ao renderizar Invest: <pre style="white-space:pre-wrap">${String(err)}</pre></div>`;
           console.error(err);
